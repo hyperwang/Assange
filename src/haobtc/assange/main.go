@@ -1,6 +1,6 @@
 package main
 
-import  "./bitcoinrpc"
+import  "haobtc/bitcoinrpc"
 
 var id int32 = 0
 
