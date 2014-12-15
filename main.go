@@ -19,7 +19,7 @@ func getId() int32 {
 func main() {
     var server string
     server = "http://bitcoinrpc:Fe2H6fPTDtTXBKnUFdGyPE7w1CqsbScVmXoxHLbLTvDr@127.0.0.1:8332"
-    bitcoinrpc.BitcoinRPC(server,"getinfo",[]interface{}{})
-    bitcoinrpc.BitcoinRPC(server,"getblockhash",[]interface{}{1})
+    bitcoinrpc.BitcoinRPC(server,"getinfo", getId(), []interface{}{})
+    bitcoinrpc.BitcoinRPC(server,"getblockhash", getId(), []interface{}{1})
 }
 

@@ -8,10 +8,10 @@ import (
     "strings"
 )
 
-func BitcoinRPC(server string, method string, params []interface{}){
+func BitcoinRPC(server string, method string, id int32, params []interface{}){
     data, err := json.Marshal(map[string]interface{}{
         "method":method,
-        "id":getId(),
+        "id":id,
         "params":params,
     }) 
     if err != nil {
