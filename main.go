@@ -1,13 +1,6 @@
 package main
 
-import (
-    "encoding/json"
-    "io/ioutil"
-    "log"
-    "net/http"
-    "strings"
-    "./bitcoinrpc"
-)
+import  "./bitcoinrpc"
 
 var id int32 = 0
 
