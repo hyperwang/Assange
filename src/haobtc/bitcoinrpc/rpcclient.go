@@ -1,4 +1,4 @@
-package bitcoinrpc 
+package bitcoinrpc
 
 import (
     "encoding/json"
@@ -8,12 +8,12 @@ import (
     "strings"
 )
 
-func BitcoinRPC(server string, method string, id int32, params []interface{}){
+func BitcoinRPC(server string, method string, id int32, params []interface{}) string {
     data, err := json.Marshal(map[string]interface{}{
         "method":method,
         "id":id,
         "params":params,
-    }) 
+    })
     if err != nil {
         log.Fatalf("Marshal: %v", err)
     }
@@ -26,10 +26,12 @@ func BitcoinRPC(server string, method string, id int32, params []interface{}){
     if err != nil {
         log.Fatalf("ReadAll: %v", err)
     }
-    result := make(map[string]interface{})
+    result := string(body)
+    log.Println(result)
+    /*result := make(map[string]interface{})
     err = json.Unmarshal(body, &result)
     if err != nil {
         log.Fatalf("Unmarshal: %v", err)
-    }
-    log.Println(result)
+    }*/
+    return result
 }
