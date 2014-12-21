@@ -6,6 +6,7 @@ import "encoding/hex"
 import "github.com/conformal/btcscript"
 import "github.com/conformal/btcnet"
 import "fmt"
+import "errors"
 
 //import btcwire "github.com/conformal/btcwire"
 
@@ -44,6 +45,15 @@ func (t TxnItem) String() string {
 	return fmt.Sprintf("Id:%d\nType:%d\nTxnHash:%s\nAddr:%s\nValue:%d\n", t.Id, t.Type, hex.EncodeToString(t.TxnHash), hex.EncodeToString(t.Addr), t.Value)
 }
 
+func DecodeSigScript(SignatureScript []byte) (Signature []byte, Pubkey []byte, err error) {
+	sigLen := int(SignatureScript[0])
+	pkLen := int(SignatureScript[sigLen+1])
+	if sigLen+pkLen != len(SignatureScript)-2 {
+		return nil, nil, errors.New("length error")
+	}
+	return SignatureScript[1 : sigLen+1], SignatureScript[sigLen+2:], nil
+}
+
 // Split the transaction into TxnItem slice
 // fill the Type,TxnHash,Addr,Value(tx output) FIELDS
 // leave the Id,BlkHash,Value(tx input),Confirmed FILEDS
@@ -64,14 +74,16 @@ func SplitTxnFromString(data []byte) []TxnItem {
 	//println("Coinbase:", cbFlag)
 
 	//if is coinbase txn, skip the txin handling.
-	//	if !cbFlag {
-	//		for i := range mtxn.TxIn {
-	//			ti := TxnItem{
-	//				Type:    0,
-	//				TxnHash: txnHash,
-	//			}
-	//		}
-	//	}
+	if !cbFlag {
+		for i := range mtxn.TxIn {
+			//ti := TxnItem{
+			//	Type:    0,
+			//	TxnHash: txnHash,
+			//}
+			fmt.Println(hex.EncodeToString(mtxn.TxIn[i].SignatureScript))
+			//txnItemSet = append(txnItemSet, ti)
+		}
+	}
 
 	//println("TxOut", len(mtxn.TxOut))
 	for i := range mtxn.TxOut {
