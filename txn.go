@@ -7,6 +7,19 @@ import "github.com/conformal/btcscript"
 import "github.com/conformal/btcnet"
 import "fmt"
 import "errors"
+import "github.com/conformal/fastsha256"
+import "hash"
+
+// Calculate the hash of hasher over buf.
+func calcHash(buf []byte, hasher hash.Hash) []byte {
+	hasher.Write(buf)
+	return hasher.Sum(nil)
+}
+
+// DSha256 calculates the hash sha256(sha256(b)).
+func DSha256(buf []byte) []byte {
+	return calcHash(calcHash(buf, fastsha256.New()), fastsha256.New())
+}
 
 //import btcwire "github.com/conformal/btcwire"
 
@@ -76,12 +89,16 @@ func SplitTxnFromString(data []byte) []TxnItem {
 	//if is coinbase txn, skip the txin handling.
 	if !cbFlag {
 		for i := range mtxn.TxIn {
-			//ti := TxnItem{
-			//	Type:    0,
-			//	TxnHash: txnHash,
-			//}
+			_, pubkey, _ := DecodeSigScript(mtxn.TxIn[i].SignatureScript)
+			addr := btcutil.Hash160(pubkey)
 			fmt.Println(hex.EncodeToString(mtxn.TxIn[i].SignatureScript))
-			//txnItemSet = append(txnItemSet, ti)
+			fmt.Println(hex.EncodeToString(addr))
+			ti := TxnItem{
+				Type:    0,
+				TxnHash: txnHash,
+				Addr:    addr,
+			}
+			txnItemSet = append(txnItemSet, ti)
 		}
 	}
 
