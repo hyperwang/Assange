@@ -70,9 +70,12 @@ var bSigScript01 [3]string = [3]string{"4830450221009ab57ec53af7900ac1ac980de630
 
 func Test_DecodeSigScript_1(t *testing.T) {
 	sSigScript, _ := hex.DecodeString(bSigScript01[0])
-	sig, pk, err := DecodeSigScript(sSigScript)
+	fP2SH, sig, pk, err := DecodeSigScript(sSigScript)
 	if err != nil {
 		t.Error(err)
+	}
+	if fP2SH {
+		t.Error("Address type Error")
 	}
 	if hex.EncodeToString(sig) != bSigScript01[1] {
 		fmt.Printf("Actual Sig:%s\n", hex.EncodeToString(sig))

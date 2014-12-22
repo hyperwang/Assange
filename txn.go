@@ -58,13 +58,14 @@ func (t TxnItem) String() string {
 	return fmt.Sprintf("Id:%d\nType:%d\nTxnHash:%s\nAddr:%s\nValue:%d\n", t.Id, t.Type, hex.EncodeToString(t.TxnHash), hex.EncodeToString(t.Addr), t.Value)
 }
 
-func DecodeSigScript(SignatureScript []byte) (Signature []byte, Pubkey []byte, err error) {
+func DecodeSigScript(SignatureScript []byte) (fP2SH bool, Signature []byte, Pubkey []byte, err error) {
 	sigLen := int(SignatureScript[0])
 	pkLen := int(SignatureScript[sigLen+1])
+
 	if sigLen+pkLen != len(SignatureScript)-2 {
-		return nil, nil, errors.New("length error")
+		return false, nil, nil, errors.New("length error")
 	}
-	return SignatureScript[1 : sigLen+1], SignatureScript[sigLen+2:], nil
+	return btcscript.IsPayToScriptHash(SignatureScript), SignatureScript[1 : sigLen+1], SignatureScript[sigLen+2:], nil
 }
 
 // Split the transaction into TxnItem slice
@@ -89,7 +90,7 @@ func SplitTxnFromString(data []byte) []TxnItem {
 	//if is coinbase txn, skip the txin handling.
 	if !cbFlag {
 		for i := range mtxn.TxIn {
-			_, pubkey, _ := DecodeSigScript(mtxn.TxIn[i].SignatureScript)
+			_, _, pubkey, _ := DecodeSigScript(mtxn.TxIn[i].SignatureScript)
 			addr := btcutil.Hash160(pubkey)
 			fmt.Println(hex.EncodeToString(mtxn.TxIn[i].SignatureScript))
 			fmt.Println(hex.EncodeToString(addr))
