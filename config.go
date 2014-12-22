@@ -6,15 +6,11 @@ import (
 	"io/ioutil"
 )
 
-var in = `{   
-	"db_host" : "127.0.0.1",
-	"db_user" : "test_user",
-	"db_password" : "test_password"}`
-
 type Configuration struct {
 	Db_host     string
 	Db_user     string
 	Db_password string
+	Db_database string
 }
 
 func LoadConfiguration(fname string) (Configuration, error) {

@@ -20,4 +20,7 @@ func TestLoadConfiguration_1(t *testing.T) {
 	if config.Db_password != "test_password" {
 		t.Error("db_password error.")
 	}
+	if config.Db_database != "test_database" {
+		t.Error("db_database error.")
+	}
 }
