@@ -10,7 +10,7 @@ import (
 
 //coinbase txn f9d077622ef057c50ac6a7d951dc225febab8f5ac5ff71bd2daf4a38ca4a32ed
 const sTxn01 string = "01000000010000000000000000000000000000000000000000000000000000000000000000ffffffff5303521c0504000175ef07124d696e656420627920425443204775696c642cfabe6d6d251b54903d746842ffa270ec30d85c4c3e02dff64cd319f8c433bbb471deac7401000000000000000800017a833f140000ffffffff0101622995000000001976a91427a1f12771de5cc3b73941664b2537c15316be4388ac00000000"
-const txn01_Type int8 = 3
+const txn01_Type int64 = COINBASE
 const txn01_TxnHashStr = "f9d077622ef057c50ac6a7d951dc225febab8f5ac5ff71bd2daf4a38ca4a32ed"
 const txn01_AddrStr string = "27a1f12771de5cc3b73941664b2537c15316be43"
 const txn01_Value int64 = 2502517249
@@ -72,13 +72,13 @@ func TestSplitTx_2(t *testing.T) {
 		if hex.EncodeToString(txOutSet[i].Addr) != strings.ToLower(txn02Out[i]["addr"].(string)) {
 			t.Errorf("Tx output %d address error.", i)
 		}
-		if txOutSet[i].Type != txn02Out[i]["type"].(int) {
+		if txOutSet[i].Type != int64(txn02Out[i]["type"].(int64)) {
 			t.Errorf("Tx output %d type error.", i)
 		}
-		if int(txOutSet[i].Value) != txn02Out[i]["value"].(int) {
+		if txOutSet[i].Value != int64(txn02Out[i]["value"].(int)) {
 			t.Errorf("Tx output %d value error.", i)
 		}
-		if txOutSet[i].Index != txn02Out[i]["index"].(int) {
+		if txOutSet[i].Index != int64(txn02Out[i]["index"].(int)) {
 			t.Errorf("Tx output %d index error.", i)
 		}
 		th, _ := btcwire.NewShaHash(txOutSet[i].TxHash)
@@ -99,7 +99,7 @@ func TestSplitTx_2(t *testing.T) {
 		if pth.String() != txn02In[i]["prehash"] {
 			t.Error("Tx input %d prehash error.", i)
 		}
-		if txInSet[i].PreOutIndex != txn02In[i]["preindex"] {
+		if txInSet[i].PreOutIndex != int64(txn02In[i]["preindex"].(int)) {
 			t.Error("Tx input %d preindex error.", i)
 		}
 	}

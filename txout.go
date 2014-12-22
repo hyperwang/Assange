@@ -11,16 +11,16 @@ import (
 )
 
 const (
-	COINBASE = iota
+	COINBASE int64 = iota
 	COMMONOUT
 )
 
 type TxOutItem struct {
 	Id       int64
-	Type     int
+	Type     int64
 	Addr     []byte
 	Value    int64
-	Index    int
+	Index    int64
 	TxHash   []byte
 	BlkHash  []byte
 	Spent    bool
@@ -34,7 +34,7 @@ type TxInItem struct {
 	TxHash      []byte
 	BlkHash     []byte
 	PreTxHash   []byte
-	PreOutIndex int
+	PreOutIndex int64
 	Expired     bool
 	Orphaned    bool
 }
@@ -60,7 +60,7 @@ func SplitTx(data []byte) ([]TxOutItem, []TxInItem, error) {
 			ti := TxInItem{
 				TxHash:      txnHash,
 				PreTxHash:   mtxn.TxIn[i].PreviousOutPoint.Hash.Bytes(),
-				PreOutIndex: int(mtxn.TxIn[i].PreviousOutPoint.Index),
+				PreOutIndex: int64(mtxn.TxIn[i].PreviousOutPoint.Index),
 			}
 			txInSet = append(txInSet, ti)
 		}
@@ -71,7 +71,7 @@ func SplitTx(data []byte) ([]TxOutItem, []TxInItem, error) {
 	}
 
 	for i := range mtxn.TxOut {
-		var txType int
+		var txType int64
 		if cbFlag {
 			txType = COINBASE
 		} else {
@@ -90,7 +90,7 @@ func SplitTx(data []byte) ([]TxOutItem, []TxInItem, error) {
 			Type:   txType,
 			Addr:   addresses[0].ScriptAddress(),
 			Value:  mtxn.TxOut[i].Value,
-			Index:  i,
+			Index:  int64(i),
 			TxHash: txnHash,
 		}
 		txOutSet = append(txOutSet, to)
