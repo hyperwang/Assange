@@ -14,6 +14,10 @@ const (
 	DEBUG
 )
 
+//func GetLogger(module string) *logging.Logger {
+//	return &logging.MustGetLogger(module)
+//}
+
 func GetLogger(module string, level int) *logging.Logger {
 	log := logging.MustGetLogger(module)
 	logging.SetLevel(logging.Level(level), module)
