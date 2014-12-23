@@ -15,7 +15,6 @@ type Configuration struct {
 
 func LoadConfiguration(fname string) (Configuration, error) {
 	content, err := ioutil.ReadFile(fname)
-	fmt.Println(string(content))
 	if err != nil {
 		fmt.Print("Error:", err)
 	}
