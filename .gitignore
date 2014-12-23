@@ -28,3 +28,6 @@ _testmain.go
 
 #Configuration File
 config.json
+
+#Block file for testing
+blk*.dat

@@ -1,4 +1,4 @@
-package Assange
+package btcassange
 
 import (
 	"database/sql"

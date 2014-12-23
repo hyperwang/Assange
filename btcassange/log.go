@@ -1,4 +1,4 @@
-package Assange
+package btcassange
 
 import (
 	"github.com/op/go-logging"
