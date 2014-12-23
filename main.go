@@ -17,12 +17,13 @@ func main() {
 	//		log.Error(err.Error())
 	//	}
 	//}
-	for i := 0; i < 2; i++ {
+	for i := 0; i < 500; i++ {
 		blk, err := bw.Next()
 		if err != nil {
 			log.Error(err.Error())
+			return
 		}
 		hdr, err := NewBlkHdrItem(blk)
-		dbmap.Insert(hdr)
+		InsertBlkHdrItem(dbmap, hdr)
 	}
 }

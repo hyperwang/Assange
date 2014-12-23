@@ -7,15 +7,15 @@ import (
 	"fmt"
 	"github.com/conformal/btcutil"
 	"os"
-	"time"
+	//"time"
 )
 
 type BlkHdrItem struct {
-	Id       int64
-	Height   int64
-	Hash     []byte
-	PreHash  []byte
-	Time     time.Time
+	Id      int64
+	Height  int64
+	Hash    []byte
+	PreHash []byte
+	//Time     time.Time
 	Bits     uint32
 	Nonce    uint32
 	Orphaned bool
@@ -26,6 +26,9 @@ func NewBlkHdrItem(blk *btcutil.Block) (*BlkHdrItem, error) {
 	msgBlk := blk.MsgBlock()
 	sha, _ := blk.Sha()
 
+	//Block height
+	hdrItem.Height = -1
+
 	//Block hash
 	hdrItem.Hash = sha.Bytes()
 	//fmt.Println(hex.EncodeToString(hdrItem.Hash))
@@ -35,7 +38,7 @@ func NewBlkHdrItem(blk *btcutil.Block) (*BlkHdrItem, error) {
 	//fmt.Println(hex.EncodeToString(hdrItem.PreHash))
 
 	//Time
-	hdrItem.Time = msgBlk.Header.Timestamp
+	//hdrItem.Time = msgBlk.Header.Timestamp
 	//fmt.Println(hdrItem.Time)
 
 	//Bits
@@ -45,6 +48,9 @@ func NewBlkHdrItem(blk *btcutil.Block) (*BlkHdrItem, error) {
 	//Nonce
 	hdrItem.Nonce = msgBlk.Header.Nonce
 	//fmt.Println(hdrItem.Nonce)
+
+	//Orphaned flg
+	hdrItem.Orphaned = true
 
 	return &hdrItem, nil
 }
