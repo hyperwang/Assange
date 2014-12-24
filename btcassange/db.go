@@ -87,6 +87,13 @@ func InsertBlkHdrItem(dbmap *gorp.DbMap, blkHdr *BlkHdrItem) error {
 	return nil
 }
 
+func InsertBlkHdrItemDirect(dbmap *gorp.DbMap, blkHdr *BlkHdrItem) error {
+	var log = GetLogger("DB", DEBUG)
+	dbmap.Insert(blkHdr)
+	log.Info("Insert block:%s into DB.", hex.EncodeToString(ReverseBytes(blkHdr.Hash)))
+	return nil
+}
+
 func HandleOrphanBlkHdrItem(dbmap *gorp.DbMap) error {
 	var log = GetLogger("DB", DEBUG)
 	var blkHdrs1 []BlkHdrItem

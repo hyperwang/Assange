@@ -7,10 +7,14 @@ import (
 )
 
 type Configuration struct {
-	Db_host     string
-	Db_user     string
-	Db_password string
-	Db_database string
+	Db_host      string
+	Db_user      string
+	Db_password  string
+	Db_database  string
+	Rpc_host     string
+	Rpc_port     int
+	Rpc_user     string
+	Rpc_password string
 }
 
 func LoadConfiguration(fname string) (Configuration, error) {
