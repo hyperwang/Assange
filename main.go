@@ -12,7 +12,7 @@ func main() {
 	InitTables(dbmap)
 	bw, _ := NewBlkWalker("blk00000.dat")
 	//	for {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 500; i++ {
 		blk, fname, offset, err := bw.Next()
 		if err != nil {
 			log.Error(err.Error())

@@ -89,6 +89,11 @@ func InsertBlkHdrItem(dbmap *gorp.DbMap, blkHdr *BlkHdrItem) error {
 
 func InsertBlkHdrItemDirect(dbmap *gorp.DbMap, blkHdr *BlkHdrItem) error {
 	var log = GetLogger("DB", DEBUG)
+	if hex.EncodeToString(blkHdr.Hash) == "6fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000" {
+		blkHdr.Height = 0
+		blkHdr.Orphaned = false
+		log.Debug("Intend to insert Genesis block.")
+	}
 	dbmap.Insert(blkHdr)
 	log.Info("Insert block:%s into DB.", hex.EncodeToString(ReverseBytes(blkHdr.Hash)))
 	return nil
@@ -99,7 +104,7 @@ func HandleOrphanBlkHdrItem(dbmap *gorp.DbMap) error {
 	var blkHdrs1 []BlkHdrItem
 	//var blkHdrs2 []*BlkHdrItem
 	//var blkHdr BlkHdrItem
-	_, err := dbmap.Select(&blkHdrs1, "select * from BlkHdrItem where Orphaned=1 order by Height")
+	_, err := dbmap.Select(&blkHdrs1, "select * from BlkHdrItem where Orphaned=1 order by Time")
 	if err != nil {
 		log.Error(err.Error())
 		return err
@@ -123,7 +128,6 @@ func HandleOrphanBlkHdrItem(dbmap *gorp.DbMap) error {
 			}
 			log.Warning("More than one previous blocks found.")
 		} else {
-			//fmt.Print(blkHdrs2, len(blkHdrs2), blkHdrs2[0].(*BlkHdrItem).Id)
 			if blkHdrs2[0].(*BlkHdrItem).Orphaned {
 				log.Warning("Based on an orphaned block. Set the block orphaned.")
 			} else {
