@@ -5,6 +5,7 @@ import (
 	"fmt"
 	//"github.com/go-sql-driver/mysql"
 	"flag"
+	"github.com/coopernurse/gorp"
 	"path"
 )
 
@@ -19,7 +20,7 @@ func init() {
 }
 
 func main() {
-	log := GetLogger("Main", DEBUG)
+	//log := GetLogger("Main", DEBUG)
 	dbmap := InitDb(Config)
 	InitTables(dbmap)
 	flag.Parse()
@@ -29,6 +30,7 @@ func main() {
 }
 
 func Reblock(dbmap *gorp.DbMap) {
+	log := GetLogger("Main", DEBUG)
 	flist, _ := GetBlkFileList(Config.Block_data_dir)
 	fmt.Println(flist)
 	for _, f := range flist {
