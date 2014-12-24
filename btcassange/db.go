@@ -11,7 +11,7 @@ import (
 
 func InitDb(config Configuration) *gorp.DbMap {
 	var log = GetLogger("DB", DEBUG)
-	source := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s", config.Db_user, config.Db_password, config.Db_host, config.Db_database)
+	source := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=True", config.Db_user, config.Db_password, config.Db_host, config.Db_database)
 	db, err := sql.Open("mysql", source)
 	if err != nil {
 		fmt.Println(err)

@@ -11,18 +11,18 @@ func main() {
 	dbmap := InitDb(Config)
 	InitTables(dbmap)
 	bw, _ := NewBlkWalker("blk00000.dat")
-	for {
-		//for i := 0; i < 2000; i++ {
-		blk, err := bw.Next()
+	//	for {
+	for i := 0; i < 10; i++ {
+		blk, fname, offset, err := bw.Next()
 		if err != nil {
 			log.Error(err.Error())
 			return
 		}
-		hdr, err := NewBlkHdrItem(blk)
+		hdr, err := NewBlkHdrItem(blk, fname, offset)
 		InsertBlkHdrItemDirect(dbmap, hdr)
 	}
-	//for i := 0; i < 10; i++ {
-	//	HandleOrphanBlkHdrItem(dbmap)
-	//}
+	for i := 0; i < 10; i++ {
+		HandleOrphanBlkHdrItem(dbmap)
+	}
 
 }
