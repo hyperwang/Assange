@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"github.com/conformal/btcutil"
 	"os"
+	"path"
 	"time"
 )
 
@@ -59,7 +60,7 @@ func NewBlkHdrItem(blk *btcutil.Block, fname string, offset int64) (*BlkHdrItem,
 	hdrItem.Orphaned = true
 
 	//File name
-	hdrItem.FileName = fname
+	_, hdrItem.FileName = path.Split(fname)
 
 	//Offset in file
 	hdrItem.Offset = offset
