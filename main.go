@@ -6,6 +6,7 @@ import (
 	//"github.com/go-sql-driver/mysql"
 	"flag"
 	"github.com/coopernurse/gorp"
+	"io"
 	"path"
 )
 
@@ -38,6 +39,9 @@ func Reblock(dbmap *gorp.DbMap) {
 		for {
 			//for i := 0; i < 10; i++ {
 			blk, fname, offset, err := bw.Next()
+			if err == io.EOF {
+				break
+			}
 			if err != nil {
 				log.Error(err.Error())
 				return
