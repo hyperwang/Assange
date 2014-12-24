@@ -17,7 +17,8 @@ func main() {
 	//		log.Error(err.Error())
 	//	}
 	//}
-	for i := 0; i < 500; i++ {
+	//for {
+	for i := 0; i < 2000; i++ {
 		blk, err := bw.Next()
 		if err != nil {
 			log.Error(err.Error())
@@ -25,5 +26,9 @@ func main() {
 		}
 		hdr, err := NewBlkHdrItem(blk)
 		InsertBlkHdrItem(dbmap, hdr)
+		//HandleOrphanBlkHdrItem(dbmap)
+	}
+	for i := 0; i < 10; i++ {
+		HandleOrphanBlkHdrItem(dbmap)
 	}
 }

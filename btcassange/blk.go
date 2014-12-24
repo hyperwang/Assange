@@ -27,7 +27,7 @@ func NewBlkHdrItem(blk *btcutil.Block) (*BlkHdrItem, error) {
 	sha, _ := blk.Sha()
 
 	//Block height
-	hdrItem.Height = -1
+	hdrItem.Height = 0
 
 	//Block hash
 	hdrItem.Hash = sha.Bytes()
