@@ -3,11 +3,13 @@ package btcassange
 import (
 	"encoding/binary"
 	//"encoding/hex"
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/conformal/btcutil"
 	"os"
 	"path"
+	"sort"
 	"time"
 )
 
@@ -15,17 +17,78 @@ type BlkHdrItem struct {
 	Id int64
 
 	//Block info
-	Height   int64
-	Hash     []byte
-	PreHash  []byte
-	Time     time.Time
-	Bits     uint32
-	Nonce    uint32
-	Orphaned bool
+	Height  int64
+	Hash    []byte
+	PreHash []byte
+	Time    time.Time
+	Bits    uint32
+	Nonce   uint32
+
+	//Flags
+	Orphaned bool //Orphaned indicates the block which is no in the longest chain.
+	Tip      bool //Tip indicates the block which no block previous hash points to it.
 
 	//File index
 	FileName string
 	Offset   int64
+}
+
+type BlockHeaderBuffer []*BlkHdrItem
+
+var BlkHdrBuffer []*BlkHdrItem
+
+func (buff BlockHeaderBuffer) Len() int {
+	return len(buff)
+}
+
+func (buff BlockHeaderBuffer) Swap(i, j int) {
+	buff[i], buff[j] = buff[j], buff[i]
+}
+
+func (buff BlockHeaderBuffer) Less(i, j int) bool {
+	return buff[i].Time.Before(buff[j].Time)
+}
+
+func isInBlkHdrBuffer(blk *BlkHdrItem) bool {
+	for _, item := range BlkHdrBuffer {
+		if bytes.Equal(blk.Hash, item.Hash) {
+			return true
+		}
+	}
+	return false
+}
+
+func InsertBlkHdrBuffer(blk *BlkHdrItem) bool {
+	log := GetLogger("Block", DEBUG)
+	if !isInBlkHdrBuffer(blk) {
+		BlkHdrBuffer = append(BlkHdrBuffer, blk)
+		sort.Sort(BlockHeaderBuffer(BlkHdrBuffer))
+		log.Info("Add block to memory buffer. Length:%d.", len(BlkHdrBuffer))
+		return true
+	}
+	return false
+}
+
+func FindBlkHdrByHash(hash []byte) (int, *BlkHdrItem) {
+	for idx, item := range BlkHdrBuffer {
+		if bytes.Equal(item.Hash, hash) {
+			return idx, item
+		}
+	}
+	return -1, nil
+}
+
+func FindBlkHdrByPreHash(hash []byte) (int, *BlkHdrItem) {
+	for idx, item := range BlkHdrBuffer {
+		if bytes.Equal(item.PreHash, hash) {
+			return idx, item
+		}
+	}
+	return -1, nil
+}
+
+func FindBlkHdrsBeforeTime(t *time.Time) []BlkHdrItem {
+	return nil
 }
 
 func NewBlkHdrItem(blk *btcutil.Block, fname string, offset int64) (*BlkHdrItem, error) {
@@ -56,7 +119,10 @@ func NewBlkHdrItem(blk *btcutil.Block, fname string, offset int64) (*BlkHdrItem,
 	hdrItem.Nonce = msgBlk.Header.Nonce
 	//fmt.Println(hdrItem.Nonce)
 
-	//Orphaned flg
+	//Tip flag
+	hdrItem.Tip = false
+
+	//Orphaned flag
 	hdrItem.Orphaned = true
 
 	//File name

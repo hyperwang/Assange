@@ -50,7 +50,7 @@ func Reblock(dbmap *gorp.DbMap) {
 	for _, f := range flist {
 		bw, _ := NewBlkWalker(path.Join(Config.Block_data_dir, f))
 		for {
-			//for i := 0; i < 10; i++ {
+			//for i := 0; i < 3000; i++ {
 			blk, fname, offset, err := bw.Next()
 			if err == io.EOF {
 				break
@@ -60,8 +60,16 @@ func Reblock(dbmap *gorp.DbMap) {
 				return
 			}
 			hdr, err := NewBlkHdrItem(blk, fname, offset)
-			CheckInsertBlkHdrItem(dbmap, hdr)
-			//	HandleOrphanBlkHdrItem(dbmap)
+			if err != nil {
+				log.Error(err.Error())
+			}
+			err = CheckInsertBlkHdrItem(dbmap, hdr)
+			if err == ERRDB_DUP_BLK {
+			}
+			if err == ERRDB_PRE_NOT_FOUND {
+				InsertBlkHdrBuffer(hdr)
+			}
+			HandleOrphanBlkHdrItem(dbmap)
 		}
 	}
 }
