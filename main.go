@@ -15,9 +15,19 @@ var reblockFlag bool
 func init() {
 	const (
 		defaultReblock = false
-		usage          = "Reindex the block header into DB."
+		usage          = "Reindex the block headers into DB."
 	)
 	flag.BoolVar(&reblockFlag, "reblock", defaultReblock, usage)
+}
+
+var trimorphanFlag bool
+
+func init() {
+	const (
+		defaultTrimorphan = false
+		usage             = "Trim orphans in block header DB."
+	)
+	flag.BoolVar(&trimorphanFlag, "trimorphan", defaultTrimorphan, usage)
 }
 
 func main() {
@@ -27,6 +37,9 @@ func main() {
 	flag.Parse()
 	if reblockFlag {
 		Reblock(dbmap)
+	}
+	if trimorphanFlag {
+		TrimOrphan(dbmap)
 	}
 }
 
@@ -47,10 +60,15 @@ func Reblock(dbmap *gorp.DbMap) {
 				return
 			}
 			hdr, err := NewBlkHdrItem(blk, fname, offset)
-			InsertBlkHdrItemDirect(dbmap, hdr)
+			CheckInsertBlkHdrItem(dbmap, hdr)
+			//	HandleOrphanBlkHdrItem(dbmap)
 		}
-		for i := 0; i < 0; i++ {
-			HandleOrphanBlkHdrItem(dbmap)
-		}
+	}
+}
+
+func TrimOrphan(dbmap *gorp.DbMap) {
+	for {
+		//for i := 0; i < 1; i++ {
+		HandleOrphanBlkHdrItem(dbmap)
 	}
 }

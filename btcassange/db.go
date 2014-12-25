@@ -99,12 +99,34 @@ func InsertBlkHdrItemDirect(dbmap *gorp.DbMap, blkHdr *BlkHdrItem) error {
 	return nil
 }
 
+func CheckInsertBlkHdrItem(dbmap *gorp.DbMap, blkHdr *BlkHdrItem) error {
+	var log = GetLogger("DB", DEBUG)
+	var blkHdrs []BlkHdrItem
+	_, err := dbmap.Select(&blkHdrs, "select * from BlkHdrItem where Hash=?", blkHdr.Hash)
+	if err != nil {
+		log.Error(err.Error())
+		return err
+	}
+	if len(blkHdrs) == 0 {
+		err = InsertBlkHdrItemDirect(dbmap, blkHdr)
+		if err != nil {
+			log.Error(err.Error())
+			return err
+		}
+	} else {
+		log.Warning("Duplicated block header found. Drop block:%s",
+			hex.EncodeToString(blkHdr.Hash))
+		return errors.New("Duplicated block")
+	}
+	return nil
+}
+
 func HandleOrphanBlkHdrItem(dbmap *gorp.DbMap) error {
 	var log = GetLogger("DB", DEBUG)
 	var blkHdrs1 []BlkHdrItem
 	//var blkHdrs2 []*BlkHdrItem
 	//var blkHdr BlkHdrItem
-	_, err := dbmap.Select(&blkHdrs1, "select * from BlkHdrItem where Orphaned=1 order by Time")
+	_, err := dbmap.Select(&blkHdrs1, "select * from BlkHdrItem where Orphaned=1 order by Time limit 200")
 	if err != nil {
 		log.Error(err.Error())
 		return err

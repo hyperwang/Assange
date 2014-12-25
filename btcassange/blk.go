@@ -46,7 +46,7 @@ func NewBlkHdrItem(blk *btcutil.Block, fname string, offset int64) (*BlkHdrItem,
 
 	//Time
 	hdrItem.Time = msgBlk.Header.Timestamp
-	fmt.Println(hdrItem.Time)
+	//fmt.Println(hdrItem.Time)
 
 	//Bits
 	hdrItem.Bits = msgBlk.Header.Bits
