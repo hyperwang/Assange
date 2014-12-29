@@ -40,7 +40,8 @@ type ModelTx struct {
 	//BlockId int64
 
 	//Transaction info
-	Hash []byte
+	IsCoinbase bool
+	Hash       []byte
 
 	//More flags to be added
 }
@@ -66,12 +67,12 @@ type ModelSpendItem struct {
 	Id int64
 
 	//Transaction output info
-	OutTxId   int64
-	Type      int64
-	OutScript []byte
-	Addr      []byte
-	Value     int64
-	Index     int64
+	OutTxId    int64
+	IsCoinbase bool
+	OutScript  []byte
+	Addr       []byte
+	Value      int64
+	OutIndex   int64
 
 	//Transaction input info
 	InTxId   int64
@@ -190,10 +191,15 @@ func (block *ModelBlock) NewBlock(resultMap map[string]interface{}) ([]*ModelTx,
 	//Parse rpc result to transactions
 	txsResult, _ := resultMap["tx"].([]interface{})
 	txs := make([]*ModelTx, 0)
-	for _, txResult := range txsResult {
+	for idx, txResult := range txsResult {
 		tx := new(ModelTx)
 		bytesBuff, _ := hex.DecodeString(txResult.(string))
 		tx.Hash = ReverseBytes(bytesBuff)
+		if idx == 0 {
+			tx.IsCoinbase = true
+		} else {
+			tx.IsCoinbase = false
+		}
 		txs = append(txs, tx)
 	}
 	return txs, nil
@@ -205,18 +211,19 @@ func (s *ModelSpendItem) NewModelSpendItem(result string) ([]*btcwire.MsgTx, err
 }
 
 func GetAddressBalance(trans *gorp.Transaction, address string) (*ModelAddressBalance, error) {
-	balanceBuff := make([]*ModelAddressBalance, 1)
+	var balanceBuff []*ModelAddressBalance
+	oldLen := len(balanceBuff)
 	_, err := trans.Select(&balanceBuff, "select * from balance where Address=?", address)
 	if err != nil {
-		log.Error(err.Error())
 		return nil, err
 	}
+	balanceBuff = balanceBuff[oldLen:len(balanceBuff)]
+
 	if len(balanceBuff) == 1 {
+		log.Debug("Address:%s found in database.", address)
 		return balanceBuff[0], nil
 	} else if len(balanceBuff) > 1 {
-		log.Error("Mutilple addresses found.")
 		return nil, errors.New("Multiple addresses found")
-
 	} else {
 		b := new(ModelAddressBalance)
 		b.Address = address
@@ -229,27 +236,52 @@ func GetAddressBalance(trans *gorp.Transaction, address string) (*ModelAddressBa
 }
 
 func NewSpendItemIntoDB(trans *gorp.Transaction, msgTx *btcwire.MsgTx, mtx *ModelTx) error {
+	var coinbaseFlag bool
 	//Handle transaction output recursivly, insert new record to spenditem database.
 	for idx, out := range msgTx.TxOut {
 		s := new(ModelSpendItem)
 		s.OutTxId = mtx.Id
+		s.IsCoinbase = mtx.IsCoinbase
+		coinbaseFlag = s.IsCoinbase
 		s.OutScript = out.PkScript
 		s.Value = out.Value
-		s.Index = int64(idx)
+		s.OutIndex = int64(idx)
 		trans.Insert(s)
-		log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d", s.OutTxId, s.Value, s.Index)
+		log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d", s.OutTxId, s.Value, s.OutIndex)
+
+		//Extract address
+		address, err := ExtractAddrFromScript(s.OutScript)
+		fmt.Println(address)
+		if err != nil {
+			log.Error(err.Error())
+		}
+
+		//Update address balance, if address not exists, initial it with 0 balance.
+		b, err := GetAddressBalance(trans, address)
+		if err != nil {
+			log.Error(err.Error())
+		}
+		oldBalance := b.Balance
+		b.Balance += s.Value
+		trans.Update(b)
+		log.Debug("Update address:%s balance from %d to %d.", b.Address, oldBalance, b.Balance)
 	}
 
+	if coinbaseFlag {
+		return nil
+	}
 	//Handle transaction input recursibly, update the previous transaction output record in spenditem database.
 	var sBuff []*ModelSpendItem
 	for _, in := range msgTx.TxIn {
 		//Find the tx record id in transaction database, by transaction's hashid and output index.
 		prevTxId, _ := trans.SelectInt("select Id from tx where Hash=?", in.PreviousOutPoint.Hash.Bytes())
-		sBuff = make([]*ModelSpendItem, 1)
-		_, err := trans.Select(&sBuff, "select * from spend_item where OutTxId=? and Index=?", prevTxId, in.PreviousOutPoint.Index)
+		oldLen := len(sBuff)
+		query := fmt.Sprintf("select * from spend_item where OutTxId=%d and OutIndex=%d", prevTxId, in.PreviousOutPoint.Index)
+		_, err := trans.Select(&sBuff, query)
 		if err != nil {
 			log.Error(err.Error())
 		}
+		sBuff = sBuff[oldLen:len(sBuff)]
 
 		//update the spenditem
 		if len(sBuff) == 1 {
@@ -257,6 +289,22 @@ func NewSpendItemIntoDB(trans *gorp.Transaction, msgTx *btcwire.MsgTx, mtx *Mode
 			sBuff[0].InScript = in.SignatureScript
 			trans.Update(sBuff[0])
 			log.Debug("Update spenditem Id:%d, OutTxId:%d. Set InTxId=%d.", sBuff[0].Id, sBuff[0].OutTxId, mtx.Id)
+
+			//Extract address
+			address, err := ExtractAddrFromScript(sBuff[0].OutScript)
+			if err != nil {
+				log.Error(err.Error())
+			}
+
+			//Update address balance, if address not exists, initial it with 0 balance.
+			b, err := GetAddressBalance(trans, address)
+			if err != nil {
+				log.Error(err.Error())
+			}
+			oldBalance := b.Balance
+			b.Balance -= sBuff[0].Value
+			trans.Update(b)
+			log.Debug("Update address:%s balance from %d to %d.", b.Address, oldBalance, b.Balance)
 		} else if len(sBuff) > 1 {
 			log.Error("Multiple outputs matched for input previous tx, OutTxId=%d, index=%d.", prevTxId, in.PreviousOutPoint.Index)
 		} else {

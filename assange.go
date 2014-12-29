@@ -16,7 +16,9 @@ import (
 	//"time"
 )
 
+var _ = ParseInt
 var _ = fmt.Printf
+var _ = json.Unmarshal
 var Config config.Configuration
 var log = GetLogger("Main", DEBUG)
 
