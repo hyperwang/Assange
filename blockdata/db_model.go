@@ -206,7 +206,7 @@ func (block *ModelBlock) NewBlock(resultMap map[string]interface{}) ([]*ModelTx,
 }
 
 func (s *ModelSpendItem) NewModelSpendItem(result string) ([]*btcwire.MsgTx, error) {
-	fmt.Println(result)
+	//fmt.Println(result)
 	return nil, nil
 }
 
@@ -251,7 +251,6 @@ func NewSpendItemIntoDB(trans *gorp.Transaction, msgTx *btcwire.MsgTx, mtx *Mode
 
 		//Extract address
 		address, err := ExtractAddrFromScript(s.OutScript)
-		fmt.Println(address)
 		if err != nil {
 			log.Error(err.Error())
 		}

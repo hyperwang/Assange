@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 	"github.com/conformal/btcnet"
 	"github.com/conformal/btcscript"
@@ -19,5 +20,10 @@ func ExtractAddrFromScript(script []byte) (string, error) {
 	//fmt.Println("Addresses:", addresses)
 	//fmt.Println("Encode:", addresses[0].EncodeAddress())
 	//fmt.Println("Required Signatures:", reqSigs)
+	if len(addresses) == 0 {
+		return "", errors.New("No address extracted")
+	} else if len(addresses) > 1 {
+		return "", errors.New("More than on address")
+	}
 	return addresses[0].EncodeAddress(), nil
 }

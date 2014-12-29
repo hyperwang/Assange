@@ -62,21 +62,19 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 			result, ok := rpcResult["result"].(string)
 			if ok {
 				bytesRawtx, _ := hex.DecodeString(result)
-				fmt.Println(result)
-				fmt.Println(bytesRawtx)
+				//fmt.Println(result)
+				//fmt.Println(bytesRawtx)
 				tx, err := btcutil.NewTxFromBytes(bytesRawtx)
 				if err != nil {
-					fmt.Println(err)
+					log.Error(err.Error())
 				}
 				msgtx := tx.MsgTx()
 				msgtxs = append(msgtxs, msgtx)
-				fmt.Println("Append to msgtxs.")
 			}
 		}
 
 		trans, _ := dbmap.Begin()
 		NewBlockIntoDB(trans, block, txs)
-		fmt.Println(len(txs), len(msgtxs))
 		if block.Height != 0 {
 			for idx, tx := range txs {
 				NewSpendItemIntoDB(trans, msgtxs[idx], tx)
