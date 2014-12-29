@@ -3,10 +3,16 @@ package blockdata
 import (
 	"Assange/config"
 	. "Assange/logging"
+	. "Assange/util"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	//"github.com/conformal/btcutil"
+	"github.com/conformal/btcwire"
 	"github.com/coopernurse/gorp"
 	_ "github.com/go-sql-driver/mysql"
+	. "strconv"
 	"time"
 )
 
@@ -29,8 +35,8 @@ type ModelBlock struct {
 }
 
 type ModelTx struct {
-	Id      int64
-	BlockId int64
+	Id int64
+	//BlockId int64
 
 	//Transaction info
 	Hash []byte
@@ -38,15 +44,30 @@ type ModelTx struct {
 	//More flags to be added
 }
 
-type ModelTxout struct {
-	Id   int64
-	TxId int64
+type RelationBlockTx struct {
+	Id int64
+
+	//Including relation between block and tx
+	BlockId int64
+	TxId    int64
+
+	//More flags to be added
+}
+
+type ModelSpendItem struct {
+	Id int64
 
 	//Transaction output info
-	Type  int64
-	Addr  []byte
-	Value int64
-	Index int64
+	OutTxId   int64
+	Type      int64
+	OutScript []byte
+	Addr      []byte
+	Value     int64
+	Index     int64
+
+	//Transaction input info
+	InTxId   int64
+	InScript []byte
 
 	//More flags to be added
 }
@@ -78,7 +99,8 @@ func InitDb(config config.Configuration) (*gorp.DbMap, error) {
 func InitTables(dbmap *gorp.DbMap) error {
 	dbmap.AddTableWithName(ModelBlock{}, "block").SetKeys(true, "Id")
 	dbmap.AddTableWithName(ModelTx{}, "tx").SetKeys(true, "Id")
-	dbmap.AddTableWithName(ModelTxout{}, "txout").SetKeys(true, "Id")
+	dbmap.AddTableWithName(RelationBlockTx{}, "block_tx").SetKeys(true, "Id")
+	dbmap.AddTableWithName(ModelSpendItem{}, "spend_item").SetKeys(true, "Id")
 	dbmap.AddTableWithName(ModelTxin{}, "txin").SetKeys(true, "Id")
 	err := dbmap.CreateTablesIfNotExists()
 	if err != nil {
@@ -102,14 +124,105 @@ func GetMaxBlockHeightFromDB(dbmap *gorp.DbMap) (int64, error) {
 	return maxHeight, nil
 }
 
-func NewBlockIntoDB(dbmap *gorp.DbMap, block *ModelBlock, tx []*ModelTx) error {
-	trans, _ := dbmap.Begin()
+func GetMaxTxIdFromDB(dbmap *gorp.DbMap) (int64, error) {
+	var maxTxId int64
+	maxTxId, _ = dbmap.SelectInt("select max(Id) as Id from tx")
+	log.Info("Max id in transaction database is %d.", maxTxId)
+	return maxTxId, nil
+}
+
+func NewBlockIntoDB(trans *gorp.Transaction, block *ModelBlock, tx []*ModelTx) error {
+	//trans, _ := dbmap.Begin()
+	block.ConfirmFlag = true
 	trans.Insert(block)
 	log.Info("Block Id:%d", block.Id)
 	for idx, _ := range tx {
-		tx[idx].BlockId = block.Id
-		trans.Insert(tx[idx])
+		//tx[idx].BlockId = block.Id
+		err := trans.Insert(tx[idx])
+		if err != nil {
+			log.Error(err.Error())
+		}
+		blockTx := new(RelationBlockTx)
+		blockTx.BlockId = block.Id
+		blockTx.TxId = tx[idx].Id
+		err = trans.Insert(blockTx)
+		if err != nil {
+			log.Error(err.Error())
+		}
 	}
-	trans.Commit()
+	//trans.Commit()
+	return nil
+}
+
+func (block *ModelBlock) NewBlock(resultMap map[string]interface{}) ([]*ModelTx, error) {
+	block.Height, _ = ParseInt(string(resultMap["height"].(json.Number)), 10, 64)
+	bytesBuff, _ := hex.DecodeString(resultMap["hash"].(string))
+	block.Hash = ReverseBytes(bytesBuff)
+	if _, ok := resultMap["previousblockhash"]; ok {
+
+		bytesBuff, _ := hex.DecodeString(resultMap["previousblockhash"].(string))
+		block.PrevHash = ReverseBytes(bytesBuff)
+	}
+	if _, ok := resultMap["nextblockhash"]; ok {
+		bytesBuff, _ = hex.DecodeString(resultMap["nextblockhash"].(string))
+		block.NextHash = ReverseBytes(bytesBuff)
+	}
+	bytesBuff, _ = hex.DecodeString(resultMap["merkleroot"].(string))
+	block.MerkleRoot = ReverseBytes(bytesBuff)
+	timeUint64, _ := ParseInt(string(resultMap["time"].(json.Number)), 10, 64)
+	block.Time = time.Unix(timeUint64, 0)
+	verUint64, _ := ParseUint(string(resultMap["version"].(json.Number)), 10, 32)
+	block.Ver = uint32(verUint64)
+	nonceUint64, _ := ParseUint(string(resultMap["nonce"].(json.Number)), 10, 32)
+	block.Nonce = uint32(nonceUint64)
+	bitsUint64, _ := ParseUint(resultMap["bits"].(string), 16, 32)
+	block.Bits = uint32(bitsUint64)
+
+	//Parse rpc result to transactions
+	txsResult, _ := resultMap["tx"].([]interface{})
+	txs := make([]*ModelTx, 0)
+	for _, txResult := range txsResult {
+		tx := new(ModelTx)
+		bytesBuff, _ := hex.DecodeString(txResult.(string))
+		tx.Hash = ReverseBytes(bytesBuff)
+		txs = append(txs, tx)
+	}
+	return txs, nil
+}
+
+func (s *ModelSpendItem) NewModelSpendItem(result string) ([]*btcwire.MsgTx, error) {
+	fmt.Println(result)
+	return nil, nil
+}
+
+func NewSpendItemIntoDB(trans *gorp.Transaction, msgTx *btcwire.MsgTx, mtx *ModelTx) error {
+	for idx, out := range msgTx.TxOut {
+		s := new(ModelSpendItem)
+		s.OutTxId = mtx.Id
+		s.OutScript = out.PkScript
+		s.Value = out.Value
+		s.Index = int64(idx)
+		trans.Insert(s)
+		log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d", s.OutTxId, s.Value, s.Index)
+	}
+
+	var sBuff []*ModelSpendItem
+	for _, in := range msgTx.TxIn {
+		prevTxId, _ := trans.SelectInt("select Id from tx where Hash=?", in.PreviousOutPoint.Hash.Bytes())
+		sBuff = make([]*ModelSpendItem, 1)
+		_, err := trans.Select(ModelSpendItem{}, "select * from spend_item where OutTxId=? and Index=?", prevTxId, in.PreviousOutPoint.Index)
+		if err != nil {
+			log.Error(err.Error())
+		}
+
+		if len(sBuff) == 1 {
+			sBuff[0].InTxId = mtx.Id
+			sBuff[0].InScript = in.SignatureScript
+			trans.Update(sBuff[0])
+			log.Debug("Update spenditem Id:%d, OutTxId:%d. Set InTxId=%d.", sBuff[0].Id, sBuff[0].OutTxId, mtx.Id)
+		} else if len(sBuff) > 1 {
+			log.Error("Multiple outputs matched for input previous tx, OutTxId=%d, index=%d.", prevTxId, in.PreviousOutPoint.Index)
+		}
+	}
 	return nil
 }

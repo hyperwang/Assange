@@ -4,24 +4,30 @@ import (
 	. "Assange/bitcoinrpc"
 	. "Assange/blockdata"
 	"Assange/config"
+	. "Assange/logging"
+	. "Assange/util"
 	"encoding/hex"
 	"encoding/json"
-	//"fmt"
+	"fmt"
+	"github.com/conformal/btcutil"
+	"github.com/conformal/btcwire"
 	"github.com/coopernurse/gorp"
 	. "strconv"
-	"time"
+	//"time"
 )
 
+var _ = fmt.Printf
 var Config config.Configuration
+var log = GetLogger("Main", DEBUG)
 
 func main() {
 	Config, _ = config.InitConfiguration("config.json")
 	dbmap, _ := InitDb(Config)
-	InitTables(dbmap)
+	err := InitTables(dbmap)
+	if err != nil {
+		log.Error(err.Error())
+	}
 	InitRpcClient(Config)
-	GetMaxBlockHeightFromDB(dbmap)
-	//block := new(ModelBlock)
-	//block.Height = uint32(1000)
 	buildBlockAndTxFromRpc(dbmap)
 }
 
@@ -31,9 +37,8 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 	var rpcResult map[string]interface{}
 	var block *ModelBlock
 	var hashFromIdx string
-
 	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	//bcHeight = 2
+	//bcHeight = 170
 	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
 	for dbHeight < bcHeight {
 		dbHeight++
@@ -44,27 +49,37 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		rpcResult = RpcGetblock(hashFromIdx)
 		result := rpcResult["result"].(map[string]interface{})
 
-		//Parse rpc result to a new block
+		//New ModelBlock and ModelTx
 		block = new(ModelBlock)
-		block.Height, _ = ParseInt(string(result["height"].(json.Number)), 10, 64)
-		block.Hash, _ = hex.DecodeString(result["hash"].(string))
-		if _, ok := result["previousblockhash"]; ok {
-			block.PrevHash, _ = hex.DecodeString(result["previousblockhash"].(string))
-		}
-		if _, ok := result["nextblockhash"]; ok {
-			block.NextHash, _ = hex.DecodeString(result["nextblockhash"].(string))
-		}
-		block.MerkleRoot, _ = hex.DecodeString(result["merkleroot"].(string))
-		timeUint64, _ := ParseInt(string(result["time"].(json.Number)), 10, 64)
-		block.Time = time.Unix(timeUint64, 0)
-		verUint64, _ := ParseUint(string(result["version"].(json.Number)), 10, 32)
-		block.Ver = uint32(verUint64)
-		nonceUint64, _ := ParseUint(string(result["nonce"].(json.Number)), 10, 32)
-		block.Nonce = uint32(nonceUint64)
-		bitsUint64, _ := ParseUint(result["bits"].(string), 16, 32)
-		block.Bits = uint32(bitsUint64)
+		txs, _ := block.NewBlock(result)
 
-		//Insert new block
-		NewBlockIntoDB(dbmap, block, nil)
+		//Get raw transactions from rpc, parse to btcwire.MsgTx
+		var msgtxs []*btcwire.MsgTx
+		for _, tx := range txs {
+			rpcResult = RpcGetrawtransaction(hex.EncodeToString(ReverseBytes(tx.Hash)))
+			result, ok := rpcResult["result"].(string)
+			if ok {
+				bytesRawtx, _ := hex.DecodeString(result)
+				fmt.Println(result)
+				fmt.Println(bytesRawtx)
+				tx, err := btcutil.NewTxFromBytes(bytesRawtx)
+				if err != nil {
+					fmt.Println(err)
+				}
+				msgtx := tx.MsgTx()
+				msgtxs = append(msgtxs, msgtx)
+				fmt.Println("Append to msgtxs.")
+			}
+		}
+
+		trans, _ := dbmap.Begin()
+		NewBlockIntoDB(trans, block, txs)
+		fmt.Println(len(txs), len(msgtxs))
+		if block.Height != 0 {
+			for idx, tx := range txs {
+				NewSpendItemIntoDB(trans, msgtxs[idx], tx)
+			}
+		}
+		trans.Commit()
 	}
 }

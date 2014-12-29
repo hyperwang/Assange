@@ -16,8 +16,7 @@ var server string
 var request_id int32
 
 func InitRpcClient(config config.Configuration) {
-	server = fmt.Sprintf("http://%s:%s@%s:%d",
-		config.Rpc_user,
+	server = fmt.Sprintf("http://%s:%s@%s:%d", config.Rpc_user,
 		config.Rpc_password,
 		config.Rpc_host,
 		config.Rpc_port)
@@ -72,4 +71,8 @@ func RpcGetblock(hash string) map[string]interface{} {
 
 func RpcGetblockcount() map[string]interface{} {
 	return BitcoinRPC("getblockcount", []interface{}{})
+}
+
+func RpcGetrawtransaction(txid string) map[string]interface{} {
+	return BitcoinRPC("getrawtransaction", []interface{}{txid})
 }
