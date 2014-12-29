@@ -13,6 +13,10 @@ type Configuration struct {
 	Db_password string
 	Db_database string
 
+	//Explorer database config
+	Explorer_user     string
+	Explorer_password string
+
 	//RPC config
 	Rpc_host     string
 	Rpc_port     int

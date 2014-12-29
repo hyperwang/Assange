@@ -62,8 +62,6 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 			result, ok := rpcResult["result"].(string)
 			if ok {
 				bytesRawtx, _ := hex.DecodeString(result)
-				//fmt.Println(result)
-				//fmt.Println(bytesRawtx)
 				tx, err := btcutil.NewTxFromBytes(bytesRawtx)
 				if err != nil {
 					log.Error(err.Error())

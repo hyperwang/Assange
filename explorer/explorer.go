@@ -1,13 +1,29 @@
 package explorer
 
 import (
+	. "Assange/config"
+	. "Assange/logging"
+	"database/sql"
+	"fmt"
+	"github.com/coopernurse/gorp"
 	"github.com/go-martini/martini"
+	_ "github.com/go-sql-driver/mysql"
 	"net/http"
 )
 
 var ExplorerServer *martini.Martini
+var dbmap *gorp.DbMap
+var log = GetLogger("Explorer", DEBUG)
 
-func InitExplorerServer() {
+func InitExplorerServer(config Configuration) {
+	source := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s?parseTime=True", config.Explorer_user, config.Explorer_password, config.Db_host, config.Db_database)
+	db, err := sql.Open("mysql", source)
+	if err != nil {
+		log.Error(err.Error())
+	}
+	log.Debug("Init explorer.")
+	dbmap = &gorp.DbMap{Db: db, Dialect: gorp.MySQLDialect{"InnoDB", "UTF8"}}
+
 	ExplorerServer = martini.New()
 
 	r := martini.NewRouter()
@@ -34,5 +50,15 @@ func ApiAddress(params martini.Params) (int, string) {
 }
 
 func ApiBalance(params martini.Params) (int, string) {
-	return http.StatusOK, params["addr"]
+	return http.StatusOK, GetBalance(params["addr"])
+}
+
+func GetBalance(addr string) string {
+	balance, err := dbmap.SelectInt("select Balance from balance where Address=?", addr)
+	if err != nil {
+		log.Error(err.Error())
+		return "Error"
+	}
+	return string(balance)
+	//	return addr
 }
