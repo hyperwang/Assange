@@ -4,6 +4,7 @@ import (
 	. "Assange/config"
 	. "Assange/logging"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"github.com/coopernurse/gorp"
 	"github.com/go-martini/martini"
@@ -59,6 +60,14 @@ func GetBalance(addr string) string {
 		log.Error(err.Error())
 		return "Error"
 	}
-	return string(balance)
-	//	return addr
+	data := map[string]interface{}{
+		"address": addr,
+		"balance": balance,
+	}
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		log.Error(err.Error())
+		return "Error"
+	}
+	return string(jsonBytes)
 }

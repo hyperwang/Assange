@@ -4,6 +4,7 @@ import (
 	. "Assange/bitcoinrpc"
 	. "Assange/blockdata"
 	"Assange/config"
+	. "Assange/explorer"
 	. "Assange/logging"
 	. "Assange/util"
 	"encoding/hex"
@@ -30,6 +31,7 @@ func main() {
 		log.Error(err.Error())
 	}
 	InitRpcClient(Config)
+	go InitExplorerServer(Config)
 	buildBlockAndTxFromRpc(dbmap)
 }
 
