@@ -9,6 +9,7 @@ import (
 	. "Assange/util"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
@@ -23,16 +24,30 @@ var _ = json.Unmarshal
 var Config config.Configuration
 var log = GetLogger("Main", DEBUG)
 
+var reindexFlag bool
+
+func init() {
+	const (
+		defaultReindex = false
+		usage          = "Regenerate database by bitcoind RPC."
+	)
+	flag.BoolVar(&reindexFlag, "reindex", defaultReindex, usage)
+}
+
 func main() {
+	var dbmap *gorp.DbMap
+	flag.Parse()
 	Config, _ = config.InitConfiguration("config.json")
-	dbmap, _ := InitDb(Config)
-	err := InitTables(dbmap)
-	if err != nil {
-		log.Error(err.Error())
-	}
 	InitRpcClient(Config)
-	go InitExplorerServer(Config)
-	buildBlockAndTxFromRpc(dbmap)
+	InitExplorerServer(Config)
+	if reindexFlag {
+		dbmap, _ := InitDb(Config)
+		err := InitTables(dbmap)
+		if err != nil {
+			log.Error(err.Error())
+		}
+		buildBlockAndTxFromRpc(dbmap)
+	}
 }
 
 func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
