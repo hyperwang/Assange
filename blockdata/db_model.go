@@ -75,10 +75,13 @@ type ModelSpendItem struct {
 	OutIndex   int64
 
 	//Transaction input info
-	InTxId   int64
-	InScript []byte
+	InTxId       int64
+	InScript     []byte
+	PrevOutHash  []byte `db:"-"`
+	PrevOutIndex int64  `db:"-"`
 
 	//More flags to be added
+	IsOut bool `db:"-"`
 }
 
 type ModelTxin struct {
@@ -315,5 +318,91 @@ func NewSpendItemIntoDB(trans *gorp.Transaction, msgTx *btcwire.MsgTx, mtx *Mode
 			log.Error("No output found in database.")
 		}
 	}
+	return nil
+}
+
+func NewSpendItem(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelSpendItem {
+	var sBuff []*ModelSpendItem
+	//Handle transaction output recursivly.
+	for idx, out := range msgTx.TxOut {
+		s := new(ModelSpendItem)
+		s.IsOut = true
+		s.OutTxId = mtx.Id
+		s.IsCoinbase = mtx.IsCoinbase
+		s.OutScript = out.PkScript
+		s.Value = out.Value
+		s.OutIndex = int64(idx)
+		//Extract address
+		address, err := ExtractAddrFromScript(s.OutScript)
+		if err != nil {
+			log.Error(err.Error())
+		}
+		s.Address = address
+		sBuff = append(sBuff, s)
+	}
+
+	//Handle transaction input recursibly.
+	for _, in := range msgTx.TxIn {
+		s := new(ModelSpendItem)
+		s.IsOut = false
+		s.PrevOutHash = in.PreviousOutPoint.Hash.Bytes()
+		s.PrevOutIndex = int64(in.PreviousOutPoint.Index)
+		s.InTxId = mtx.Id
+		s.InScript = in.SignatureScript
+		sBuff = append(sBuff, s)
+	}
+	return sBuff
+}
+
+func InsertSpendItemIntoDB(trans *gorp.Transaction, sItem []*ModelSpendItem) error {
+	var sBuff []*ModelSpendItem
+	for _, s := range sItem {
+		if s.IsOut {
+			trans.Insert(s)
+			log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d", s.OutTxId, s.Value, s.OutIndex)
+			UpdateBalance(trans, s.Address, s.Value, true)
+			if s.IsCoinbase {
+				return nil
+			}
+		} else {
+			prevTxId, _ := trans.SelectInt("select Id from tx where Hash=?", s.PrevOutHash)
+			oldLen := len(sBuff)
+			query := fmt.Sprintf("select * from spenditem where OutTxId=%d and OutIndex=%d", prevTxId, s.PrevOutIndex)
+			_, err := trans.Select(&sBuff, query)
+			if err != nil {
+				log.Error(err.Error())
+			}
+			sBuff = sBuff[oldLen:len(sBuff)]
+
+			//update the spenditem
+			if len(sBuff) == 1 {
+				sBuff[0].InTxId = s.InTxId
+				sBuff[0].InScript = s.InScript
+				trans.Update(sBuff[0])
+				log.Debug("Update spenditem Id:%d, OutTxId:%d. Set InTxId=%d.", sBuff[0].Id, sBuff[0].OutTxId, s.InTxId)
+				UpdateBalance(trans, sBuff[0].Address, sBuff[0].Value, false)
+			} else if len(sBuff) > 1 {
+				log.Error("Multiple outputs matched for input previous tx, OutTxId=%d, index=%d.", prevTxId, s.PrevOutIndex)
+			} else {
+				log.Error("No output found in database.")
+			}
+		}
+	}
+	return nil
+}
+
+func UpdateBalance(trans *gorp.Transaction, address string, value int64, flag bool) error {
+	b, err := GetAddressBalance(trans, address)
+	if err != nil {
+		return err
+	}
+	oldBalance := b.Balance
+	if flag {
+		b.Balance += value
+	} else {
+		b.Balance -= value
+	}
+	trans.Update(b)
+	log.Debug("Update address:%s balance from %d to %d.", b.Address, oldBalance, b.Balance)
 	return nil
 }

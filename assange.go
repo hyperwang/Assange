@@ -40,7 +40,7 @@ func main() {
 	Config, _ = config.InitConfiguration("config.json")
 	InitRpcClient(Config)
 	InitZmq()
-	HandleZmq()
+	//HandleZmq()
 	//InitExplorerServer(Config)
 	if reindexFlag {
 		dbmap, _ := InitDb(Config)
@@ -94,7 +94,9 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		NewBlockIntoDB(trans, block, txs)
 		if block.Height != 0 {
 			for idx, tx := range txs {
-				NewSpendItemIntoDB(trans, msgtxs[idx], tx)
+				//NewSpendItemIntoDB(trans, msgtxs[idx], tx)
+				s := NewSpendItem(msgtxs[idx], tx)
+				InsertSpendItemIntoDB(trans, s)
 			}
 		}
 		trans.Commit()
