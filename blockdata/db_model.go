@@ -70,7 +70,7 @@ type ModelSpendItem struct {
 	OutTxId    int64
 	IsCoinbase bool
 	OutScript  []byte
-	Addr       []byte
+	Address    string
 	Value      int64
 	OutIndex   int64
 
@@ -109,13 +109,22 @@ func InitTables(dbmap *gorp.DbMap) error {
 	dbmap.AddTableWithName(ModelBlock{}, "block").SetKeys(true, "Id")
 	dbmap.AddTableWithName(ModelTx{}, "tx").SetKeys(true, "Id")
 	dbmap.AddTableWithName(RelationBlockTx{}, "block_tx").SetKeys(true, "Id")
-	dbmap.AddTableWithName(ModelSpendItem{}, "spend_item").SetKeys(true, "Id")
-	dbmap.AddTableWithName(ModelTxin{}, "txin").SetKeys(true, "Id")
+	dbmap.AddTableWithName(ModelSpendItem{}, "spenditem").SetKeys(true, "Id")
 	dbmap.AddTableWithName(ModelAddressBalance{}, "balance").SetKeys(true, "Id")
 	err := dbmap.CreateTablesIfNotExists()
 	if err != nil {
 		return err
 	}
+
+	dbmap.Exec("alter table `block` add index `idx_block_hash` (Hash(20))")
+	dbmap.Exec("alter table `block` add index `idx_block_prevhash` (PrevHash(20))")
+	dbmap.Exec("alter table `block` add index `idx_block_nexthash` (NextHash(20))")
+	dbmap.Exec("alter table `block` add index `idx_block_height` (Height)")
+	dbmap.Exec("alter table `tx` add index `idx_tx_hash` (Hash(20))")
+	dbmap.Exec("alter table `spenditem` add index `idx_spenditem_outtxid_outindex` (OutTxId,OutIndex)")
+	dbmap.Exec("alter table `spenditem` add index `idx_spenditem_address` (Address)")
+	dbmap.Exec("alter table `balance` add index `idex_balance_address` (Address)")
+
 	return nil
 }
 
@@ -142,12 +151,10 @@ func GetMaxTxIdFromDB(dbmap *gorp.DbMap) (int64, error) {
 }
 
 func NewBlockIntoDB(trans *gorp.Transaction, block *ModelBlock, tx []*ModelTx) error {
-	//trans, _ := dbmap.Begin()
 	block.ConfirmFlag = true
 	trans.Insert(block)
-	log.Info("Block Id:%d", block.Id)
+	log.Info("Insert new block, Id:%d, Height:%d.", block.Id, block.Height)
 	for idx, _ := range tx {
-		//tx[idx].BlockId = block.Id
 		err := trans.Insert(tx[idx])
 		if err != nil {
 			log.Error(err.Error())
@@ -160,7 +167,6 @@ func NewBlockIntoDB(trans *gorp.Transaction, block *ModelBlock, tx []*ModelTx) e
 			log.Error(err.Error())
 		}
 	}
-	//trans.Commit()
 	return nil
 }
 
@@ -206,7 +212,6 @@ func (block *ModelBlock) NewBlock(resultMap map[string]interface{}) ([]*ModelTx,
 }
 
 func (s *ModelSpendItem) NewModelSpendItem(result string) ([]*btcwire.MsgTx, error) {
-	//fmt.Println(result)
 	return nil, nil
 }
 
@@ -246,14 +251,14 @@ func NewSpendItemIntoDB(trans *gorp.Transaction, msgTx *btcwire.MsgTx, mtx *Mode
 		s.OutScript = out.PkScript
 		s.Value = out.Value
 		s.OutIndex = int64(idx)
-		trans.Insert(s)
-		log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d", s.OutTxId, s.Value, s.OutIndex)
-
 		//Extract address
 		address, err := ExtractAddrFromScript(s.OutScript)
 		if err != nil {
 			log.Error(err.Error())
 		}
+		s.Address = address
+		trans.Insert(s)
+		log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d", s.OutTxId, s.Value, s.OutIndex)
 
 		//Update address balance, if address not exists, initial it with 0 balance.
 		b, err := GetAddressBalance(trans, address)
@@ -275,7 +280,7 @@ func NewSpendItemIntoDB(trans *gorp.Transaction, msgTx *btcwire.MsgTx, mtx *Mode
 		//Find the tx record id in transaction database, by transaction's hashid and output index.
 		prevTxId, _ := trans.SelectInt("select Id from tx where Hash=?", in.PreviousOutPoint.Hash.Bytes())
 		oldLen := len(sBuff)
-		query := fmt.Sprintf("select * from spend_item where OutTxId=%d and OutIndex=%d", prevTxId, in.PreviousOutPoint.Index)
+		query := fmt.Sprintf("select * from spenditem where OutTxId=%d and OutIndex=%d", prevTxId, in.PreviousOutPoint.Index)
 		_, err := trans.Select(&sBuff, query)
 		if err != nil {
 			log.Error(err.Error())

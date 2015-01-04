@@ -4,7 +4,8 @@ import (
 	. "Assange/bitcoinrpc"
 	. "Assange/blockdata"
 	"Assange/config"
-	. "Assange/explorer"
+	. "Assange/zmq"
+	//. "Assange/explorer"
 	. "Assange/logging"
 	. "Assange/util"
 	"encoding/hex"
@@ -35,11 +36,12 @@ func init() {
 }
 
 func main() {
-	var dbmap *gorp.DbMap
 	flag.Parse()
 	Config, _ = config.InitConfiguration("config.json")
 	InitRpcClient(Config)
-	InitExplorerServer(Config)
+	InitZmq()
+	HandleZmq()
+	//InitExplorerServer(Config)
 	if reindexFlag {
 		dbmap, _ := InitDb(Config)
 		err := InitTables(dbmap)
@@ -57,7 +59,7 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 	var block *ModelBlock
 	var hashFromIdx string
 	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	//bcHeight = 170
+	bcHeight = 50000
 	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
 	for dbHeight < bcHeight {
 		dbHeight++
