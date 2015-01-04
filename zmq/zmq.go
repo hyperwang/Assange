@@ -1,6 +1,7 @@
 package zmq
 
 import (
+	. "Assange/raw"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
 )
@@ -25,17 +26,17 @@ func HandleZmq() {
 		topic := string(msg[0:topic_len])
 		content := msg[topic_len:]
 		if topic == "BLK" {
-			HandleBlk(&content)
+			HandleBlk(content)
 		} else if topic == "TXN" {
-			HandleTxn(&content)
+			HandleTxn(content)
 		}
 	}
 }
 
-func HandleTxn(raw *[]byte) {
-	fmt.Println("txn")
+func HandleTxn(raw []byte) {
+	NewTxFromRaw(raw)
 }
 
-func HandleBlk(raw *[]byte) {
+func HandleBlk(raw []byte) {
 	fmt.Println("block")
 }

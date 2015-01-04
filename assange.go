@@ -59,7 +59,7 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 	var block *ModelBlock
 	var hashFromIdx string
 	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	bcHeight = 50000
+	//bcHeight = 50000
 	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
 	for dbHeight < bcHeight {
 		dbHeight++
