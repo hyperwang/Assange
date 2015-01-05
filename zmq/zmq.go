@@ -42,15 +42,16 @@ func HandleTxn(raw []byte) {
 	trans, _ := dbmap.Begin()
 	tx := NewTxFromRaw(raw)
 	tx = InsertTxIntoDB(trans, tx)
-	for _, s := range tx.SItems {
-		if s.IsOut {
-			s.OutTxId = tx.Id
-		}
+	for _, txout := range tx.Txouts {
+		InsertTxoutIntoDb(trans, txout)
 	}
-	InsertSpendItemsIntoDB(trans, tx.SItems)
+	for _, txin := range tx.Txins {
+		InsertTxinIntoDb(trans, txin)
+	}
 	trans.Commit()
 }
 
 func HandleBlk(raw []byte) {
 	fmt.Println("block")
+
 }

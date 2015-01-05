@@ -36,20 +36,22 @@ type ModelBlock struct {
 	Txs []*ModelTx `db:"-"`
 
 	//More flags to be added
-	ConfirmFlag bool
 }
 
 type ModelTx struct {
 	Id int64
 
 	//Transaction info
-	IsCoinbase bool
-	Hash       string
+	Hash string
 
-	//Spenditems
-	SItems []*ModelSpendItem `db:"-"`
+	//Txouts
+	Txouts []*ModelTxout `db:"-"`
+
+	//Txins
+	Txins []*ModelTxin `db:"-"`
 
 	//More flags to be added
+	IsCoinbase bool
 }
 
 type RelationBlockTx struct {
@@ -62,32 +64,40 @@ type RelationBlockTx struct {
 	//More flags to be added
 }
 
-type ModelAddressBalance struct {
+type ModelBalance struct {
 	Id int64
 
 	Address string
 	Balance int64
 }
 
-type ModelSpendItem struct {
+type ModelTxout struct {
 	Id int64
 
 	//Transaction output info
-	OutTxId    int64
-	IsCoinbase bool
-	OutScript  []byte
-	Address    string
-	Value      int64
-	OutIndex   int64
-
-	//Transaction input info
-	InTxId       int64
-	InScript     []byte
-	PrevOutHash  string `db:"-"`
-	PrevOutIndex int64  `db:"-"`
+	OutTxHash string
+	OutScript []byte
+	OutIndex  int64
+	Address   string
+	Value     int64
 
 	//More flags to be added
-	IsOut bool `db:"-"`
+	IsCoinbase bool
+
+	//Transaction input
+	RefTxinId int64
+}
+
+type ModelTxin struct {
+	Id int64
+
+	//Transaction input info
+	InTxHash     string
+	InScript     []byte
+	PrevOutHash  string
+	PrevOutIndex int64
+
+	//More flags to be added
 }
 
 var log = GetLogger("DB", DEBUG)
@@ -106,8 +116,9 @@ func InitTables(dbmap *gorp.DbMap) error {
 	dbmap.AddTableWithName(ModelBlock{}, "block").SetKeys(true, "Id")
 	dbmap.AddTableWithName(ModelTx{}, "tx").SetKeys(true, "Id")
 	dbmap.AddTableWithName(RelationBlockTx{}, "block_tx").SetKeys(true, "Id")
-	dbmap.AddTableWithName(ModelSpendItem{}, "spenditem").SetKeys(true, "Id")
-	dbmap.AddTableWithName(ModelAddressBalance{}, "balance").SetKeys(true, "Id")
+	dbmap.AddTableWithName(ModelTxout{}, "txout").SetKeys(true, "Id")
+	dbmap.AddTableWithName(ModelTxin{}, "txin").SetKeys(true, "Id")
+	dbmap.AddTableWithName(ModelBalance{}, "balance").SetKeys(true, "Id")
 	err := dbmap.CreateTablesIfNotExists()
 	if err != nil {
 		return err
@@ -119,9 +130,13 @@ func InitTables(dbmap *gorp.DbMap) error {
 	dbmap.Exec("alter table `block` add index `idx_block_height` (Height)")
 
 	dbmap.Exec("create unique index uidx_tx_hash on tx(Hash)")
+	dbmap.Exec("alter table `tx` add index `idx_tx_blockhash` (BlockHash)")
 
-	dbmap.Exec("create unique index uidx_spenditem_outtxid_outindex on spenditem(OutTxId,OutIndex)")
-	dbmap.Exec("alter table `spenditem` add index `idx_spenditem_address` (Address)")
+	dbmap.Exec("create unique index uidx_txout_outtxhash_outindex on txout(OutTxHash,OutIndex)")
+	dbmap.Exec("alter table `txout` add index `idx_txout_address` (Address)")
+
+	dbmap.Exec("create index idx_txin_preouthash_preoutindex on txin(PreOutHash,PreOutIndex)")
+	dbmap.Exec("alter table `txin` add index `idx_txin_intxhash` (InTxHash)")
 
 	dbmap.Exec("create unique index uidx_balance_address on balance(Address)")
 
@@ -129,7 +144,6 @@ func InitTables(dbmap *gorp.DbMap) error {
 }
 
 func GetMaxBlockHeightFromDB(dbmap *gorp.DbMap) (int64, error) {
-	//var blkBuff []*ModleBlock
 	var maxHeight int64
 	maxHeight, _ = dbmap.SelectInt("select max(Height) as Height from block")
 	if maxHeight == 0 {
@@ -166,7 +180,7 @@ func InsertTxIntoDB(trans *gorp.Transaction, tx *ModelTx) *ModelTx {
 	}
 }
 
-func InsertBlockIntoDB(trans *gorp.Transaction, block *ModelBlock) {
+func InsertBlockIntoDb(trans *gorp.Transaction, block *ModelBlock) {
 	err := trans.Insert(block)
 	if err != nil {
 		log.Error(err.Error())
@@ -192,7 +206,8 @@ func NewTxFromString(result string, tx *ModelTx) {
 		log.Error(err.Error())
 	}
 	msgtx := tx1.MsgTx()
-	tx.SItems = NewSpendItemsFromMsg(msgtx, tx)
+	tx.Txouts = NewTxoutsFromMsg(msgtx, tx)
+	tx.Txins = NewTxinsFromMsg(msgtx, tx)
 }
 
 func NewBlockFromMap(resultMap map[string]interface{}) (*ModelBlock, error) {
@@ -214,8 +229,6 @@ func NewBlockFromMap(resultMap map[string]interface{}) (*ModelBlock, error) {
 	block.Nonce = uint32(nonceUint64)
 	bitsUint64, _ := ParseUint(resultMap["bits"].(string), 16, 32)
 	block.Bits = uint32(bitsUint64)
-	block.ConfirmFlag = true
-
 	txsResult, _ := resultMap["tx"].([]interface{})
 	for idx, txResult := range txsResult {
 		tx := new(ModelTx)
@@ -230,12 +243,8 @@ func NewBlockFromMap(resultMap map[string]interface{}) (*ModelBlock, error) {
 	return block, nil
 }
 
-func (s *ModelSpendItem) NewModelSpendItem(result string) ([]*btcwire.MsgTx, error) {
-	return nil, nil
-}
-
-func GetAddressBalance(trans *gorp.Transaction, address string) (*ModelAddressBalance, error) {
-	var balanceBuff []*ModelAddressBalance
+func GetAddressBalance(trans *gorp.Transaction, address string) (*ModelBalance, error) {
+	var balanceBuff []*ModelBalance
 	oldLen := len(balanceBuff)
 	_, err := trans.Select(&balanceBuff, "select * from balance where Address=?", address)
 	if err != nil {
@@ -249,7 +258,7 @@ func GetAddressBalance(trans *gorp.Transaction, address string) (*ModelAddressBa
 	} else if len(balanceBuff) > 1 {
 		return nil, errors.New("Multiple addresses found")
 	} else {
-		b := new(ModelAddressBalance)
+		b := new(ModelBalance)
 		b.Address = address
 		b.Balance = 0
 		trans.Insert(b)
@@ -257,77 +266,86 @@ func GetAddressBalance(trans *gorp.Transaction, address string) (*ModelAddressBa
 		return b, nil
 	}
 }
-
-func NewSpendItemsFromMsg(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelSpendItem {
-	var sBuff []*ModelSpendItem
+func NewTxoutsFromMsg(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelTxout {
+	var outBuff []*ModelTxout
 	//Handle transaction output recursivly.
 	for idx, out := range msgTx.TxOut {
-		s := new(ModelSpendItem)
-		s.IsOut = true
-		s.OutTxId = mtx.Id
+		s := new(ModelTxout)
+		hash, err := msgTx.TxSha()
+		if err != nil {
+			log.Error(err.Error())
+		}
+		s.OutTxHash = hash.String()
 		s.IsCoinbase = mtx.IsCoinbase
 		s.OutScript = out.PkScript
 		s.Value = out.Value
 		s.OutIndex = int64(idx)
 		//Extract address
 		s.Address = ExtractAddrFromScript(s.OutScript)
-		sBuff = append(sBuff, s)
+		outBuff = append(outBuff, s)
 	}
-
-	//Handle transaction input recursibly.
-	for _, in := range msgTx.TxIn {
-		s := new(ModelSpendItem)
-		s.IsCoinbase = mtx.IsCoinbase
-		s.IsOut = false
-		s.PrevOutHash = in.PreviousOutPoint.Hash.String()
-		s.PrevOutIndex = int64(in.PreviousOutPoint.Index)
-		s.InTxId = mtx.Id
-		s.InScript = in.SignatureScript
-		sBuff = append(sBuff, s)
-	}
-	return sBuff
+	return outBuff
 }
 
-func InsertSpendItemsIntoDB(trans *gorp.Transaction, sItem []*ModelSpendItem) error {
-	var sBuff []*ModelSpendItem
-	for _, s := range sItem {
-		if s.IsOut {
-			err := trans.Insert(s)
-			if err != nil {
-				log.Error(err.Error())
-				log.Error("Insert spenditem error. Output tx id:%d, value:%d, index:%d, address:%s.", s.OutTxId, s.Value, s.OutIndex, s.Address)
-				continue
-			}
-			log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d, address:%s.", s.OutTxId, s.Value, s.OutIndex, s.Address)
-			UpdateBalance(trans, s.Address, s.Value, true)
-		} else {
-			if s.IsCoinbase {
-				return nil
-			}
-			prevTxId, _ := trans.SelectInt("select Id from tx where Hash=?", s.PrevOutHash)
-			oldLen := len(sBuff)
-			query := fmt.Sprintf("select * from spenditem where OutTxId=%d and OutIndex=%d", prevTxId, s.PrevOutIndex)
-			_, err := trans.Select(&sBuff, query)
-			if err != nil {
-				log.Error(err.Error())
-			}
-			sBuff = sBuff[oldLen:len(sBuff)]
-
-			//update the spenditem
-			if len(sBuff) == 1 {
-				sBuff[0].InTxId = s.InTxId
-				sBuff[0].InScript = s.InScript
-				trans.Update(sBuff[0])
-				log.Debug("Update spenditem Id:%d, OutTxId:%d. Set InTxId=%d.", sBuff[0].Id, sBuff[0].OutTxId, s.InTxId)
-				UpdateBalance(trans, sBuff[0].Address, sBuff[0].Value, false)
-			} else if len(sBuff) > 1 {
-				log.Error("Multiple outputs matched for input previous tx, OutTxId=%d, index=%d.", prevTxId, s.PrevOutIndex)
-			} else {
-				log.Error("No output found in database. OutTxId=%d, index=%d.", prevTxId, s.PrevOutIndex)
-			}
-		}
+func NewTxinsFromMsg(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelTxin {
+	var inBuff []*ModelTxin
+	if mtx.IsCoinbase {
+		return inBuff
 	}
-	return nil
+	//Handle transaction input recursibly.
+	for _, in := range msgTx.TxIn {
+		s := new(ModelTxin)
+		hash, err := msgTx.TxSha()
+		if err != nil {
+			log.Error(err.Error())
+		}
+		s.InTxHash = hash.String()
+		s.InScript = in.SignatureScript
+		s.PrevOutHash = in.PreviousOutPoint.Hash.String()
+		s.PrevOutIndex = int64(in.PreviousOutPoint.Index)
+		inBuff = append(inBuff, s)
+	}
+	return inBuff
+}
+
+func InsertTxinIntoDb(trans *gorp.Transaction, txin *ModelTxin) {
+	//Insert txin into database
+	err := trans.Insert(txin)
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
+
+	//Find matched txout, and update address balance
+	var outBuff []*ModelTxout
+	oldLen := len(outBuff)
+	query := fmt.Sprintf("select * from txout where OutTxHash='%s' and OutIndex=%d", txin.PrevOutHash, txin.PrevOutIndex)
+	_, err = trans.Select(&outBuff, query)
+	if err != nil {
+		log.Error(err.Error())
+	}
+	outBuff = outBuff[oldLen:len(outBuff)]
+
+	if len(outBuff) == 1 {
+		outBuff[0].RefTxinId = txin.Id
+		trans.Update(outBuff[0])
+		log.Debug("Update txout Id:%d, OutTxHash:%s, OutIndex:%d. Set RefTxinId=%d.", outBuff[0].Id, outBuff[0].OutTxHash, outBuff[0].OutIndex, outBuff[0].RefTxinId)
+		UpdateBalance(trans, outBuff[0].Address, outBuff[0].Value, false)
+	} else if len(outBuff) > 1 {
+		log.Error("Multiple outputs matched for input previous tx, OutTxHash:%s, OutIndex=%d.", txin.PrevOutHash, txin.PrevOutIndex)
+	} else {
+		log.Error("No output found in database. OutTxHash=%s, OutIndex=%d.", txin.PrevOutHash, txin.PrevOutIndex)
+	}
+}
+
+func InsertTxoutIntoDb(trans *gorp.Transaction, txout *ModelTxout) {
+	err := trans.Insert(txout)
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
+	log.Debug("New spenditem into database. Output tx hash:%s, value:%d, index:%d, address:%s.", txout.OutTxHash, txout.Value, txout.OutIndex, txout.Address)
+	UpdateBalance(trans, txout.Address, txout.Value, true)
 }
 
 func UpdateBalance(trans *gorp.Transaction, address string, value int64, flag bool) error {

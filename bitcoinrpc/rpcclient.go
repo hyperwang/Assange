@@ -48,12 +48,6 @@ func BitcoinRPC(method string, params []interface{}) map[string]interface{} {
 	if err := d.Decode(&x); err != nil {
 		log.Error(err.Error())
 	}
-	//fmt.Printf("decode to %#v\n", x)
-	//result, err := json.Marshal(x)
-	//if err != nil {
-	//	log.Error(err.Error())
-	//}
-	//fmt.Println(result)
 	return x.(map[string]interface{})
 }
 

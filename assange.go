@@ -49,7 +49,7 @@ func main() {
 	if reindexFlag {
 		buildBlockAndTxFromRpc(dbmap)
 	}
-	HandleZmq()
+	//HandleZmq()
 }
 
 func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
@@ -58,7 +58,7 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 	var rpcResult map[string]interface{}
 	var hashFromIdx string
 	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	bcHeight = 50
+	bcHeight = 50000
 	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
 	for dbHeight < bcHeight {
 		dbHeight++
@@ -73,7 +73,7 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		//Make new ModelBlock from rpc result
 		block, _ := NewBlockFromMap(result)
 		//Insert into DB, and tx's id will be updated
-		InsertBlockIntoDB(trans, block)
+		InsertBlockIntoDb(trans, block)
 
 		//Make new Tx from rpc result, including spenditems for each Tx.
 		for _, tx := range block.Txs {
@@ -88,7 +88,12 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		//Insert spenditem into db.
 		if block.Height != 0 {
 			for _, tx := range block.Txs {
-				InsertSpendItemsIntoDB(trans, tx.SItems)
+				for _, txout := range tx.Txouts {
+					InsertTxoutIntoDb(trans, txout)
+				}
+				for _, txin := range tx.Txins {
+					InsertTxinIntoDb(trans, txin)
+				}
 			}
 		}
 		trans.Commit()
