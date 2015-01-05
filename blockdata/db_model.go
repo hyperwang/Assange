@@ -297,8 +297,13 @@ func InsertSpendItemsIntoDB(trans *gorp.Transaction, sItem []*ModelSpendItem) er
 	var sBuff []*ModelSpendItem
 	for _, s := range sItem {
 		if s.IsOut {
-			trans.Insert(s)
-			log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d", s.OutTxId, s.Value, s.OutIndex)
+			err := trans.Insert(s)
+			if err != nil {
+				log.Error(err.Error())
+				log.Error("Insert spenditem error. Output tx id:%d, value:%d, index:%d, address:%s.", s.OutTxId, s.Value, s.OutIndex, s.Address)
+				continue
+			}
+			log.Debug("New spenditem into database. Output tx id:%d, value:%d, index:%d, address:%s.", s.OutTxId, s.Value, s.OutIndex, s.Address)
 			UpdateBalance(trans, s.Address, s.Value, true)
 		} else {
 			if s.IsCoinbase {

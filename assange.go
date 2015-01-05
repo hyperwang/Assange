@@ -8,12 +8,12 @@ import (
 	. "Assange/logging"
 	//. "Assange/util"
 	. "Assange/zmq"
-	"encoding/hex"
+	//"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/conformal/btcutil"
-	"github.com/conformal/btcwire"
+	//"github.com/conformal/btcutil"
+	//"github.com/conformal/btcwire"
 	"github.com/coopernurse/gorp"
 	. "strconv"
 	//"time"
@@ -58,10 +58,11 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 	var rpcResult map[string]interface{}
 	var hashFromIdx string
 	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	bcHeight = 1
+	bcHeight = 50
 	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
 	for dbHeight < bcHeight {
 		dbHeight++
+		trans, _ := dbmap.Begin()
 
 		//Get block info by height
 		rpcResult = RpcGetblockhash(dbHeight)
@@ -71,29 +72,23 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 
 		//Make new ModelBlock from rpc result
 		block, _ := NewBlockFromMap(result)
+		//Insert into DB, and tx's id will be updated
+		InsertBlockIntoDB(trans, block)
 
-		//Get raw transactions from rpc, parse to btcwire.MsgTx
-		var msgtxs []*btcwire.MsgTx
+		//Make new Tx from rpc result, including spenditems for each Tx.
 		for _, tx := range block.Txs {
 			rpcResult = RpcGetrawtransaction(tx.Hash)
 			result, ok := rpcResult["result"].(string)
 			if ok {
-				bytesRawtx, _ := hex.DecodeString(result)
-				tx, err := btcutil.NewTxFromBytes(bytesRawtx)
-				if err != nil {
-					log.Error(err.Error())
-				}
-				msgtx := tx.MsgTx()
-				msgtxs = append(msgtxs, msgtx)
+				NewTxFromString(result, tx)
+			} else {
+				log.Error("Type assert error. tx.Hash:%s.", tx.Hash)
 			}
 		}
-
-		trans, _ := dbmap.Begin()
-		InsertBlockIntoDB(trans, block)
+		//Insert spenditem into db.
 		if block.Height != 0 {
-			for idx, tx := range block.Txs {
-				sItems := NewSpendItemsFromMsg(msgtxs[idx], tx)
-				InsertSpendItemsIntoDB(trans, sItems)
+			for _, tx := range block.Txs {
+				InsertSpendItemsIntoDB(trans, tx.SItems)
 			}
 		}
 		trans.Commit()
