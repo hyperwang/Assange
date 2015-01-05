@@ -107,14 +107,17 @@ func InitTables(dbmap *gorp.DbMap) error {
 		return err
 	}
 
-	dbmap.Exec("alter table `block` add index `idx_block_hash` (Hash)")
+	dbmap.Exec("create unique index uidx_block_hash on block(Hash)")
 	dbmap.Exec("alter table `block` add index `idx_block_prevhash` (PrevHash)")
 	dbmap.Exec("alter table `block` add index `idx_block_nexthash` (NextHash)")
 	dbmap.Exec("alter table `block` add index `idx_block_height` (Height)")
-	dbmap.Exec("alter table `tx` add index `idx_tx_hash` (Hash)")
-	dbmap.Exec("alter table `spenditem` add index `idx_spenditem_outtxid_outindex` (OutTxId,OutIndex)")
+
+	dbmap.Exec("create unique index uidx_tx_hash on tx(Hash)")
+
+	dbmap.Exec("create unique index uidx_spenditem_outtxid_outindex on spenditem(OutTxId,OutIndex)")
 	dbmap.Exec("alter table `spenditem` add index `idx_spenditem_address` (Address)")
-	dbmap.Exec("alter table `balance` add index `idex_balance_address` (Address)")
+
+	dbmap.Exec("create unique index uidx_balance_address on balance(Address)")
 
 	return nil
 }
