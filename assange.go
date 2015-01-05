@@ -4,10 +4,10 @@ import (
 	. "Assange/bitcoinrpc"
 	. "Assange/blockdata"
 	"Assange/config"
-	. "Assange/zmq"
-	//. "Assange/explorer"
+	. "Assange/explorer"
 	. "Assange/logging"
-	. "Assange/util"
+	//. "Assange/util"
+	. "Assange/zmq"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -23,7 +23,7 @@ var _ = ParseInt
 var _ = fmt.Printf
 var _ = json.Unmarshal
 var Config config.Configuration
-var log = GetLogger("Main", DEBUG)
+var log = GetLogger("Main", INFO)
 
 var reindexFlag bool
 
@@ -39,11 +39,11 @@ func main() {
 	flag.Parse()
 	Config, _ = config.InitConfiguration("config.json")
 	InitRpcClient(Config)
+	dbmap, _ := InitDb(Config)
 	InitZmq()
-	//HandleZmq()
-	//InitExplorerServer(Config)
+	go HandleZmq()
+	go InitExplorerServer(Config)
 	if reindexFlag {
-		dbmap, _ := InitDb(Config)
 		err := InitTables(dbmap)
 		if err != nil {
 			log.Error(err.Error())
@@ -56,7 +56,6 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 	var bcHeight int64
 	var dbHeight int64
 	var rpcResult map[string]interface{}
-	var block *ModelBlock
 	var hashFromIdx string
 	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
 	//bcHeight = 50000
@@ -71,13 +70,12 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		result := rpcResult["result"].(map[string]interface{})
 
 		//New ModelBlock and ModelTx
-		block = new(ModelBlock)
-		txs, _ := block.NewBlock(result)
+		block, txs, _ := NewBlockTxFromMap(result)
 
 		//Get raw transactions from rpc, parse to btcwire.MsgTx
 		var msgtxs []*btcwire.MsgTx
 		for _, tx := range txs {
-			rpcResult = RpcGetrawtransaction(hex.EncodeToString(ReverseBytes(tx.Hash)))
+			rpcResult = RpcGetrawtransaction(tx.Hash)
 			result, ok := rpcResult["result"].(string)
 			if ok {
 				bytesRawtx, _ := hex.DecodeString(result)
@@ -91,12 +89,11 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		}
 
 		trans, _ := dbmap.Begin()
-		NewBlockIntoDB(trans, block, txs)
+		InsertBlockIntoDB(trans, block, txs)
 		if block.Height != 0 {
 			for idx, tx := range txs {
-				//NewSpendItemIntoDB(trans, msgtxs[idx], tx)
-				s := NewSpendItem(msgtxs[idx], tx)
-				InsertSpendItemIntoDB(trans, s)
+				sItems := NewSpendItems(msgtxs[idx], tx)
+				InsertSpendItemsIntoDB(trans, sItems)
 			}
 		}
 		trans.Commit()
