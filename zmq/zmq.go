@@ -9,6 +9,7 @@ import (
 	"github.com/coopernurse/gorp"
 )
 
+var _ = fmt.Println
 var topic1 = "BLK"
 var topic2 = "TXN"
 var topic_len = len(topic1)
@@ -52,6 +53,8 @@ func HandleTxn(raw []byte) {
 }
 
 func HandleBlk(raw []byte) {
-	fmt.Println("block")
-
+	trans, _ := dbmap.Begin()
+	block := NewBlockFromRaw(raw)
+	InsertBlockIntoDb(trans, block)
+	trans.Commit()
 }

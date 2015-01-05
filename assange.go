@@ -23,7 +23,7 @@ var _ = ParseInt
 var _ = fmt.Printf
 var _ = json.Unmarshal
 var Config config.Configuration
-var log = GetLogger("Main", INFO)
+var log = GetLogger("Main", DEBUG)
 
 var reindexFlag bool
 
@@ -49,7 +49,7 @@ func main() {
 	if reindexFlag {
 		buildBlockAndTxFromRpc(dbmap)
 	}
-	//HandleZmq()
+	HandleZmq()
 }
 
 func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
@@ -58,7 +58,7 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 	var rpcResult map[string]interface{}
 	var hashFromIdx string
 	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	bcHeight = 50000
+	//bcHeight = 50000
 	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
 	for dbHeight < bcHeight {
 		dbHeight++

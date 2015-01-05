@@ -28,7 +28,7 @@ type ModelBlock struct {
 	NextHash   string
 	MerkleRoot string
 	Time       time.Time
-	Ver        uint32
+	Ver        int32
 	Nonce      uint32
 	Bits       uint32
 
@@ -224,7 +224,7 @@ func NewBlockFromMap(resultMap map[string]interface{}) (*ModelBlock, error) {
 	timeUint64, _ := ParseInt(string(resultMap["time"].(json.Number)), 10, 64)
 	block.Time = time.Unix(timeUint64, 0)
 	verUint64, _ := ParseUint(string(resultMap["version"].(json.Number)), 10, 32)
-	block.Ver = uint32(verUint64)
+	block.Ver = int32(verUint64)
 	nonceUint64, _ := ParseUint(string(resultMap["nonce"].(json.Number)), 10, 32)
 	block.Nonce = uint32(nonceUint64)
 	bitsUint64, _ := ParseUint(resultMap["bits"].(string), 16, 32)
