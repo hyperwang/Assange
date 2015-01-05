@@ -270,11 +270,7 @@ func NewSpendItemsFromMsg(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelSpendItem 
 		s.Value = out.Value
 		s.OutIndex = int64(idx)
 		//Extract address
-		address, err := ExtractAddrFromScript(s.OutScript)
-		if err != nil {
-			log.Error(err.Error())
-		}
-		s.Address = address
+		s.Address = ExtractAddrFromScript(s.OutScript)
 		sBuff = append(sBuff, s)
 	}
 
