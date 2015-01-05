@@ -23,10 +23,10 @@ type ModelBlock struct {
 
 	//Block info
 	Height     int64
-	Hash       string //[]byte
-	PrevHash   string //[]byte
-	NextHash   string //[]byte
-	MerkleRoot string //[]byte
+	Hash       string
+	PrevHash   string
+	NextHash   string
+	MerkleRoot string
 	Time       time.Time
 	Ver        uint32
 	Nonce      uint32
@@ -41,11 +41,10 @@ type ModelBlock struct {
 
 type ModelTx struct {
 	Id int64
-	//BlockId int64
 
 	//Transaction info
 	IsCoinbase bool
-	Hash       string //[]byte
+	Hash       string
 
 	//Spenditems
 	SItems []*ModelSpendItem `db:"-"`
@@ -84,7 +83,7 @@ type ModelSpendItem struct {
 	//Transaction input info
 	InTxId       int64
 	InScript     []byte
-	PrevOutHash  string //[]byte `db:"-"`
+	PrevOutHash  string `db:"-"`
 	PrevOutIndex int64  `db:"-"`
 
 	//More flags to be added

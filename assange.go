@@ -40,16 +40,16 @@ func main() {
 	Config, _ = config.InitConfiguration("config.json")
 	InitRpcClient(Config)
 	dbmap, _ := InitDb(Config)
-	InitZmq()
-	go HandleZmq()
+	err := InitTables(dbmap)
+	if err != nil {
+		log.Error(err.Error())
+	}
+	InitZmq(dbmap)
 	go InitExplorerServer(Config)
 	if reindexFlag {
-		err := InitTables(dbmap)
-		if err != nil {
-			log.Error(err.Error())
-		}
 		buildBlockAndTxFromRpc(dbmap)
 	}
+	HandleZmq()
 }
 
 func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {

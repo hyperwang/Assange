@@ -1,23 +1,28 @@
 package zmq
 
 import (
+	. "Assange/blockdata"
 	. "Assange/raw"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
+	//"github.com/go-sql-driver/mysql"
+	"github.com/coopernurse/gorp"
 )
 
 var topic1 = "BLK"
 var topic2 = "TXN"
 var topic_len = len(topic1)
 var socket *zmq.Socket
+var dbmap *gorp.DbMap
 
-func InitZmq() {
+func InitZmq(db *gorp.DbMap) {
 	context, _ := zmq.NewContext()
 	socket, _ = context.NewSocket(zmq.SUB)
 	socket.Connect("tcp://127.0.0.1:5000")
 
 	socket.SetSockOptString(zmq.SUBSCRIBE, topic1)
 	socket.SetSockOptString(zmq.SUBSCRIBE, topic2)
+	dbmap = db
 }
 
 func HandleZmq() {
@@ -34,7 +39,16 @@ func HandleZmq() {
 }
 
 func HandleTxn(raw []byte) {
-	NewTxFromRaw(raw)
+	trans, _ := dbmap.Begin()
+	tx := NewTxFromRaw(raw)
+	tx = InsertTxIntoDB(trans, tx)
+	for _, s := range tx.SItems {
+		if s.IsOut {
+			s.OutTxId = tx.Id
+		}
+	}
+	InsertSpendItemsIntoDB(trans, tx.SItems)
+	trans.Commit()
 }
 
 func HandleBlk(raw []byte) {
