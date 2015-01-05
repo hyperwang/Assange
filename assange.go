@@ -58,7 +58,7 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 	var rpcResult map[string]interface{}
 	var hashFromIdx string
 	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	//bcHeight = 50000
+	bcHeight = 1
 	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
 	for dbHeight < bcHeight {
 		dbHeight++
@@ -69,12 +69,12 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		rpcResult = RpcGetblock(hashFromIdx)
 		result := rpcResult["result"].(map[string]interface{})
 
-		//New ModelBlock and ModelTx
-		block, txs, _ := NewBlockTxFromMap(result)
+		//Make new ModelBlock from rpc result
+		block, _ := NewBlockFromMap(result)
 
 		//Get raw transactions from rpc, parse to btcwire.MsgTx
 		var msgtxs []*btcwire.MsgTx
-		for _, tx := range txs {
+		for _, tx := range block.Txs {
 			rpcResult = RpcGetrawtransaction(tx.Hash)
 			result, ok := rpcResult["result"].(string)
 			if ok {
@@ -89,10 +89,10 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		}
 
 		trans, _ := dbmap.Begin()
-		InsertBlockIntoDB(trans, block, txs)
+		InsertBlockIntoDB(trans, block)
 		if block.Height != 0 {
-			for idx, tx := range txs {
-				sItems := NewSpendItems(msgtxs[idx], tx)
+			for idx, tx := range block.Txs {
+				sItems := NewSpendItemsFromMsg(msgtxs[idx], tx)
 				InsertSpendItemsIntoDB(trans, sItems)
 			}
 		}

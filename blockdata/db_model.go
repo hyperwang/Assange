@@ -5,11 +5,12 @@ import (
 	. "Assange/logging"
 	. "Assange/util"
 	"database/sql"
-	//"encoding/hex"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	//"github.com/conformal/btcutil"
 	"errors"
+	"github.com/conformal/btcutil"
 	"github.com/conformal/btcwire"
 	"github.com/coopernurse/gorp"
 	_ "github.com/go-sql-driver/mysql"
@@ -31,6 +32,9 @@ type ModelBlock struct {
 	Nonce      uint32
 	Bits       uint32
 
+	//Transactions
+	Txs []*ModelTx `db:"-"`
+
 	//More flags to be added
 	ConfirmFlag bool
 }
@@ -42,6 +46,9 @@ type ModelTx struct {
 	//Transaction info
 	IsCoinbase bool
 	Hash       string //[]byte
+
+	//Spenditems
+	SItems []*ModelSpendItem `db:"-"`
 
 	//More flags to be added
 }
@@ -143,48 +150,62 @@ func GetMaxTxIdFromDB(dbmap *gorp.DbMap) (int64, error) {
 	log.Info("Max id in transaction database is %d.", maxTxId)
 	return maxTxId, nil
 }
-func InsertTxIntoDB(trans *gorp.Transaction, tx *ModelTx) {
-	txCnt, _ := trans.SelectInt("select count(*) from tx where hash=?", tx.Hash)
-	if txCnt == 0 {
-		trans.Insert(tx)
+
+func InsertTxIntoDB(trans *gorp.Transaction, tx *ModelTx) *ModelTx {
+	var txBuff []*ModelTx
+	oldLen := len(txBuff)
+	trans.Select(&txBuff, "select * from tx where Hash=?", tx.Hash)
+	if oldLen == len(txBuff) {
+		err := trans.Insert(tx)
+		if err != nil {
+			log.Error(err.Error())
+		}
+		return tx
 	} else {
+		log.Error("Tx hash already existed. Id:%d, Hash:%s.", tx.Id, tx.Hash)
+		return txBuff[oldLen]
 	}
 }
-func InsertBlockIntoDB(trans *gorp.Transaction, block *ModelBlock, tx []*ModelTx) error {
-	trans.Insert(block)
+
+func InsertBlockIntoDB(trans *gorp.Transaction, block *ModelBlock) {
+	err := trans.Insert(block)
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
 	log.Info("Insert new block, Id:%d, Height:%d.", block.Id, block.Height)
-	for idx, _ := range tx {
-		trans.Insert(tx[idx])
-		//InsertTxIntoDB(trans, tx[idx])
+	for idx, _ := range block.Txs {
+		block.Txs[idx] = InsertTxIntoDB(trans, block.Txs[idx])
 		blockTx := new(RelationBlockTx)
 		blockTx.BlockId = block.Id
-		blockTx.TxId = tx[idx].Id
+		blockTx.TxId = block.Txs[idx].Id
 		err := trans.Insert(blockTx)
 		if err != nil {
 			log.Error(err.Error())
 		}
 	}
-	return nil
 }
 
-func NewBlockTxFromMap(resultMap map[string]interface{}) (*ModelBlock, []*ModelTx, error) {
+func NewTxFromString(result string, tx *ModelTx) {
+	bytesResult, _ := hex.DecodeString(result)
+	tx1, err := btcutil.NewTxFromBytes(bytesResult)
+	if err != nil {
+		log.Error(err.Error())
+	}
+	msgtx := tx1.MsgTx()
+	tx.SItems = NewSpendItemsFromMsg(msgtx, tx)
+}
+
+func NewBlockFromMap(resultMap map[string]interface{}) (*ModelBlock, error) {
 	block := new(ModelBlock)
 	block.Height, _ = ParseInt(string(resultMap["height"].(json.Number)), 10, 64)
-	//bytesBuff, _ := hex.DecodeString(resultMap["hash"].(string))
-	//block.Hash = ReverseBytes(bytesBuff)
 	block.Hash = resultMap["hash"].(string)
 	if _, ok := resultMap["previousblockhash"]; ok {
-		//bytesBuff, _ := hex.DecodeString(resultMap["previousblockhash"].(string))
-		//block.PrevHash = ReverseBytes(bytesBuff)
 		block.PrevHash = resultMap["previousblockhash"].(string)
 	}
 	if _, ok := resultMap["nextblockhash"]; ok {
-		//bytesBuff, _ = hex.DecodeString(resultMap["nextblockhash"].(string))
-		//block.NextHash = ReverseBytes(bytesBuff)
 		block.NextHash = resultMap["nextblockhash"].(string)
 	}
-	//bytesBuff, _ = hex.DecodeString(resultMap["merkleroot"].(string))
-	//block.MerkleRoot = ReverseBytes(bytesBuff)
 	block.MerkleRoot = resultMap["merkleroot"].(string)
 	timeUint64, _ := ParseInt(string(resultMap["time"].(json.Number)), 10, 64)
 	block.Time = time.Unix(timeUint64, 0)
@@ -196,22 +217,18 @@ func NewBlockTxFromMap(resultMap map[string]interface{}) (*ModelBlock, []*ModelT
 	block.Bits = uint32(bitsUint64)
 	block.ConfirmFlag = true
 
-	//Parse rpc result to transactions
 	txsResult, _ := resultMap["tx"].([]interface{})
-	txs := make([]*ModelTx, 0)
 	for idx, txResult := range txsResult {
 		tx := new(ModelTx)
-		//bytesBuff, _ := hex.DecodeString(txResult.(string))
-		//tx.Hash = ReverseBytes(bytesBuff)
 		tx.Hash = txResult.(string)
 		if idx == 0 {
 			tx.IsCoinbase = true
 		} else {
 			tx.IsCoinbase = false
 		}
-		txs = append(txs, tx)
+		block.Txs = append(block.Txs, tx)
 	}
-	return block, txs, nil
+	return block, nil
 }
 
 func (s *ModelSpendItem) NewModelSpendItem(result string) ([]*btcwire.MsgTx, error) {
@@ -242,7 +259,7 @@ func GetAddressBalance(trans *gorp.Transaction, address string) (*ModelAddressBa
 	}
 }
 
-func NewSpendItems(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelSpendItem {
+func NewSpendItemsFromMsg(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelSpendItem {
 	var sBuff []*ModelSpendItem
 	//Handle transaction output recursivly.
 	for idx, out := range msgTx.TxOut {
