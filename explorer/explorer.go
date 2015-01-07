@@ -1,6 +1,7 @@
 package explorer
 
 import (
+	. "Assange/blockdata"
 	. "Assange/config"
 	. "Assange/logging"
 	"database/sql"
@@ -39,7 +40,7 @@ func InitExplorerServer(config Configuration) {
 }
 
 func ApiBlock(params martini.Params) (int, string) {
-	return http.StatusOK, params["hashid"]
+	return http.StatusOK, GetBlock(params["hashid"])
 }
 
 func ApiTx(params martini.Params) (int, string) {
@@ -52,6 +53,37 @@ func ApiAddress(params martini.Params) (int, string) {
 
 func ApiBalance(params martini.Params) (int, string) {
 	return http.StatusOK, GetBalance(params["addr"])
+}
+
+func GetBlock(hash string) string {
+	var blockBuff []*ModelBlock
+	oldLen := len(blockBuff)
+	_, err := dbmap.Select(&blockBuff, "select * from block where Hash=?", hash)
+	if err != nil {
+		log.Error(err.Error())
+		return "Error"
+	}
+	if oldLen == len(blockBuff) {
+		log.Error("Block not found. Hash:%s.", hash)
+		return "Error"
+	}
+	data := map[string]interface{}{
+		"hash":        blockBuff[0].Hash,
+		"height":      blockBuff[0].Height,
+		"version":     blockBuff[0].Ver,
+		"time":        blockBuff[0].Time,
+		"prev_block":  blockBuff[0].PrevHash,
+		"next_block":  blockBuff[0].NextHash,
+		"nonce":       blockBuff[0].Nonce,
+		"bits":        blockBuff[0].Bits,
+		"merkle_root": blockBuff[0].MerkleRoot,
+	}
+	jsonBytes, err := json.Marshal(data)
+	if err != nil {
+		log.Error(err.Error())
+		return "Error"
+	}
+	return string(jsonBytes)
 }
 
 func GetBalance(addr string) string {

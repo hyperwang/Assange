@@ -33,16 +33,19 @@ type ModelBlock struct {
 	Bits       uint32
 
 	//Transactions
-	Txs []*ModelTx `db:"-"`
+	Txs          []*ModelTx `db:"-"`
+	Transactions []byte
 
 	//More flags to be added
+	Extracted bool
 }
 
 type ModelTx struct {
 	Id int64
 
 	//Transaction info
-	Hash string
+	Hash         string
+	ReceivedTime time.Time
 
 	//Txouts
 	Txouts []*ModelTxout `db:"-"`
@@ -52,6 +55,8 @@ type ModelTx struct {
 
 	//More flags to be added
 	IsCoinbase bool
+	Extracted  bool
+	Confirmed  bool
 }
 
 type RelationBlockTx struct {
@@ -181,6 +186,7 @@ func InsertTxIntoDB(trans *gorp.Transaction, tx *ModelTx) *ModelTx {
 }
 
 func InsertBlockIntoDb(trans *gorp.Transaction, block *ModelBlock) {
+	block.Extracted = true
 	err := trans.Insert(block)
 	if err != nil {
 		log.Error(err.Error())
@@ -197,6 +203,33 @@ func InsertBlockIntoDb(trans *gorp.Transaction, block *ModelBlock) {
 			log.Error(err.Error())
 		}
 	}
+}
+
+func InsertBlockOnlyIntoDb(trans *gorp.Transaction, block *ModelBlock) {
+	var blockBuff []*ModelBlock
+
+	oldLen := len(blockBuff)
+	_, err := trans.Select(&blockBuff, "select * from block where Hash=?", block.PrevHash)
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
+	if oldLen == len(blockBuff) {
+		log.Error("No previous block found. Hash:%s.", block.PrevHash)
+		return
+	} else {
+		blockBuff[0].NextHash = block.Hash
+		trans.Update(blockBuff[0])
+	}
+
+	block.Height = blockBuff[0].Height + 1
+	err = trans.Insert(block)
+	if err != nil {
+		log.Error(err.Error())
+		return
+	}
+	log.Info("Insert new block, Id:%d, Height:%d.", block.Id, block.Height)
+	return
 }
 
 func NewTxFromString(result string, tx *ModelTx) {
@@ -233,12 +266,20 @@ func NewBlockFromMap(resultMap map[string]interface{}) (*ModelBlock, error) {
 	for idx, txResult := range txsResult {
 		tx := new(ModelTx)
 		tx.Hash = txResult.(string)
+		tx.ReceivedTime = block.Time
+		tx.Confirmed = true
+		tx.Extracted = false
 		if idx == 0 {
 			tx.IsCoinbase = true
 		} else {
 			tx.IsCoinbase = false
 		}
 		block.Txs = append(block.Txs, tx)
+		bHash, err := hex.DecodeString(tx.Hash)
+		if err != nil {
+			log.Error(err.Error())
+		}
+		block.Transactions = append(block.Transactions, ReverseBytes(bHash)...)
 	}
 	return block, nil
 }

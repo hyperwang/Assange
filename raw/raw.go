@@ -48,7 +48,8 @@ func NewBlockFromRaw(raw []byte) *ModelBlock {
 	var tx *ModelTx
 	for idx, msgTx := range msgBlock.Transactions {
 		tx = new(ModelTx)
-		if hash, err := msgTx.TxSha(); err != nil {
+		hash, err := msgTx.TxSha()
+		if err != nil {
 			log.Error(err.Error())
 		} else {
 			tx.Hash = hash.String()
@@ -59,6 +60,7 @@ func NewBlockFromRaw(raw []byte) *ModelBlock {
 			tx.IsCoinbase = false
 		}
 		modelBlock.Txs = append(modelBlock.Txs, tx)
+		modelBlock.Transactions = append(modelBlock.Transactions, hash.Bytes()...)
 	}
 	return modelBlock
 }

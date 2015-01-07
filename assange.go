@@ -47,7 +47,8 @@ func main() {
 	InitZmq(dbmap)
 	go InitExplorerServer(Config)
 	if reindexFlag {
-		buildBlockAndTxFromRpc(dbmap)
+		//buildBlockAndTxFromRpc(dbmap)
+		buildBlock(dbmap)
 	}
 	HandleZmq()
 }
@@ -97,5 +98,35 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 			}
 		}
 		trans.Commit()
+	}
+}
+
+func buildBlock(dbmap *gorp.DbMap) {
+	var bcHeight int64
+	var dbHeight int64
+	var rpcResult map[string]interface{}
+	var hashFromIdx string
+	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
+	//bcHeight = 50000
+	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
+	for dbHeight < bcHeight {
+		dbHeight++
+		trans, _ := dbmap.Begin()
+
+		//Get block info by height
+		rpcResult = RpcGetblockhash(dbHeight)
+		hashFromIdx = rpcResult["result"].(string)
+		rpcResult = RpcGetblock(hashFromIdx)
+		result := rpcResult["result"].(map[string]interface{})
+
+		//Make new ModelBlock from rpc result
+		block, _ := NewBlockFromMap(result)
+		//Insert into DB, and tx's id will be updated
+		InsertBlockOnlyIntoDb(trans, block)
+
+		trans.Commit()
+		if dbHeight == bcHeight {
+			bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
+		}
 	}
 }

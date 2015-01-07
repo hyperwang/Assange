@@ -34,7 +34,7 @@ func HandleZmq() {
 		if topic == "BLK" {
 			HandleBlk(content)
 		} else if topic == "TXN" {
-			HandleTxn(content)
+			//HandleTxn(content)
 		}
 	}
 }
@@ -55,6 +55,6 @@ func HandleTxn(raw []byte) {
 func HandleBlk(raw []byte) {
 	trans, _ := dbmap.Begin()
 	block := NewBlockFromRaw(raw)
-	InsertBlockIntoDb(trans, block)
+	InsertBlockOnlyIntoDb(trans, block)
 	trans.Commit()
 }
