@@ -205,6 +205,13 @@ func InsertBlockIntoDb(trans *gorp.Transaction, block *ModelBlock) {
 	}
 }
 
+func InsertRelationBlockTxIntoDB(trans *gorp.Transaction, block *ModelBlock, tx *ModelTx) {
+	r := new(RelationBlockTx)
+	r.BlockId = block.Id
+	r.TxId = tx.Id
+	trans.Insert(r)
+}
+
 func InsertBlockOnlyIntoDb(trans *gorp.Transaction, block *ModelBlock) {
 	var blockBuff []*ModelBlock
 
@@ -222,7 +229,6 @@ func InsertBlockOnlyIntoDb(trans *gorp.Transaction, block *ModelBlock) {
 		trans.Update(blockBuff[0])
 	}
 
-	block.Height = blockBuff[0].Height + 1
 	err = trans.Insert(block)
 	if err != nil {
 		log.Error(err.Error())
@@ -232,15 +238,35 @@ func InsertBlockOnlyIntoDb(trans *gorp.Transaction, block *ModelBlock) {
 	return
 }
 
+func GetOneUnextractedBlock(trans *gorp.Transaction) (*ModelBlock, error) {
+	var blockBuff []*ModelBlock
+	oldLen := len(blockBuff)
+	_, err := trans.Select(&blockBuff, "select * from block where Extracted=0 limit 1")
+	if err != nil {
+		log.Error(err.Error())
+		return nil, err
+	}
+	if oldLen == len(blockBuff) {
+		log.Error("No unextracted block found.")
+		return nil, errors.New("Unextracted block not found")
+	} else {
+		log.Debug("Unextracted block found. Id:%d Hash:%s.", blockBuff[0].Id, blockBuff[0].Hash)
+	}
+	return blockBuff[0], nil
+}
+
 func NewTxFromString(result string, tx *ModelTx) {
 	bytesResult, _ := hex.DecodeString(result)
 	tx1, err := btcutil.NewTxFromBytes(bytesResult)
 	if err != nil {
 		log.Error(err.Error())
 	}
-	msgtx := tx1.MsgTx()
-	tx.Txouts = NewTxoutsFromMsg(msgtx, tx)
-	tx.Txins = NewTxinsFromMsg(msgtx, tx)
+	msgTx := tx1.MsgTx()
+	hash, _ := msgTx.TxSha()
+	tx.Hash = hash.String()
+	tx.Extracted = false
+	tx.Txouts = NewTxoutsFromMsg(msgTx, tx)
+	tx.Txins = NewTxinsFromMsg(msgTx, tx)
 }
 
 func NewBlockFromMap(resultMap map[string]interface{}) (*ModelBlock, error) {
@@ -307,6 +333,7 @@ func GetAddressBalance(trans *gorp.Transaction, address string) (*ModelBalance, 
 		return b, nil
 	}
 }
+
 func NewTxoutsFromMsg(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelTxout {
 	var outBuff []*ModelTxout
 	//Handle transaction output recursivly.

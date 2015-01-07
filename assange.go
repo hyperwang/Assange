@@ -6,9 +6,9 @@ import (
 	"Assange/config"
 	. "Assange/explorer"
 	. "Assange/logging"
-	//. "Assange/util"
+	. "Assange/util"
 	. "Assange/zmq"
-	//"encoding/hex"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -49,8 +49,9 @@ func main() {
 	if reindexFlag {
 		//buildBlockAndTxFromRpc(dbmap)
 		buildBlock(dbmap)
+		buildTx(dbmap)
 	}
-	HandleZmq()
+	//HandleZmq()
 }
 
 func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
@@ -86,6 +87,7 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 				log.Error("Type assert error. tx.Hash:%s.", tx.Hash)
 			}
 		}
+
 		//Insert spenditem into db.
 		if block.Height != 0 {
 			for _, tx := range block.Txs {
@@ -128,5 +130,56 @@ func buildBlock(dbmap *gorp.DbMap) {
 		if dbHeight == bcHeight {
 			bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
 		}
+	}
+}
+
+func buildTx(dbmap *gorp.DbMap) {
+	for {
+		trans, _ := dbmap.Begin()
+
+		//Get an unextracted block.
+		block, err := GetOneUnextractedBlock(trans)
+		if err != nil {
+			break
+		}
+
+		//Make new Tx from rpc result, including spenditems for each Tx.
+		for i := 0; i < len(block.Transactions); i += 32 {
+			bHash := block.Transactions[i : i+32]
+			hash := hex.EncodeToString(ReverseBytes(bHash))
+			rpcResult := RpcGetrawtransaction(hash)
+			result, ok := rpcResult["result"].(string)
+			tx := new(ModelTx)
+			if ok {
+				tx.ReceivedTime = block.Time
+				if i == 0 {
+					tx.IsCoinbase = true
+				} else {
+					tx.IsCoinbase = false
+				}
+				tx.Confirmed = true
+				NewTxFromString(result, tx)
+				tx = InsertTxIntoDB(trans, tx)
+			} else {
+				log.Error("Type assert error. tx.Hash:%s.", tx.Hash)
+			}
+
+			//Maintain the relationship between block and tx
+			InsertRelationBlockTxIntoDB(trans, block, tx)
+
+			for _, txout := range tx.Txouts {
+				InsertTxoutIntoDb(trans, txout)
+			}
+			for _, txin := range tx.Txins {
+				InsertTxinIntoDb(trans, txin)
+			}
+
+			tx.Extracted = true
+			trans.Update(tx)
+		}
+
+		block.Extracted = true
+		trans.Update(block)
+		trans.Commit()
 	}
 }
