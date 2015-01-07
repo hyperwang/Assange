@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"time"
 	//"github.com/conformal/btcutil"
 	//"github.com/conformal/btcwire"
 	"github.com/coopernurse/gorp"
@@ -23,7 +24,7 @@ var _ = ParseInt
 var _ = fmt.Printf
 var _ = json.Unmarshal
 var Config config.Configuration
-var log = GetLogger("Main", DEBUG)
+var log = GetLogger("Main", WARNING)
 
 var reindexFlag bool
 
@@ -135,19 +136,32 @@ func buildBlock(dbmap *gorp.DbMap) {
 
 func buildTx(dbmap *gorp.DbMap) {
 	for {
+		var block_start_time time.Time
+		var start_time time.Time
+
+		block_start_time = time.Now()
+
+		start_time = time.Now()
 		trans, _ := dbmap.Begin()
+		log.Warning("Checkpoint dbmap.Begin duration:%f.", time.Since(start_time).Seconds())
 
 		//Get an unextracted block.
+		start_time = time.Now()
 		block, err := GetOneUnextractedBlock(trans)
 		if err != nil {
 			break
 		}
+		log.Warning("Checkpoint GetOneUnextractedBlock duration:%f.", time.Since(start_time).Seconds())
 
 		//Make new Tx from rpc result, including spenditems for each Tx.
 		for i := 0; i < len(block.Transactions); i += 32 {
+			start_time = time.Now()
 			bHash := block.Transactions[i : i+32]
 			hash := hex.EncodeToString(ReverseBytes(bHash))
 			rpcResult := RpcGetrawtransaction(hash)
+			log.Warning("Checkpoint  RpcGetrawtransaction duration:%f.", time.Since(start_time).Seconds())
+
+			start_time = time.Now()
 			result, ok := rpcResult["result"].(string)
 			tx := new(ModelTx)
 			if ok {
@@ -163,23 +177,38 @@ func buildTx(dbmap *gorp.DbMap) {
 			} else {
 				log.Error("Type assert error. tx.Hash:%s.", tx.Hash)
 			}
+			log.Warning("Checkpoint InsertTxIntoDB duration:%f.", time.Since(start_time).Seconds())
 
 			//Maintain the relationship between block and tx
+			start_time = time.Now()
 			InsertRelationBlockTxIntoDB(trans, block, tx)
+			log.Warning("Checkpoint03 InsertRelationBlockTxIntoDB duration:%f.", time.Since(start_time).Seconds())
 
+			start_time = time.Now()
 			for _, txout := range tx.Txouts {
 				InsertTxoutIntoDb(trans, txout)
 			}
+			log.Warning("Checkpoint04 InsertTxoutIntoDb duration:%f.", time.Since(start_time).Seconds())
+
+			start_time = time.Now()
 			for _, txin := range tx.Txins {
 				InsertTxinIntoDb(trans, txin)
 			}
+			log.Warning("Checkpoint05 InsertTxinIntoDb duration:%f.", time.Since(start_time).Seconds())
 
 			tx.Extracted = true
 			trans.Update(tx)
 		}
 
 		block.Extracted = true
+		start_time = time.Now()
 		trans.Update(block)
+		log.Warning("Checkpoint06 trans.Update duration:%f.", time.Since(start_time).Seconds())
+
+		start_time = time.Now()
 		trans.Commit()
+		log.Warning("Checkpoint07 trans.Commit duration:%f.", time.Since(start_time).Seconds())
+
+		log.Warning("Block duration:%f", time.Since(block_start_time).Seconds())
 	}
 }

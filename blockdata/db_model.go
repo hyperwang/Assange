@@ -45,6 +45,8 @@ type ModelTx struct {
 
 	//Transaction info
 	Hash         string
+	Ver          int32
+	LockTime     uint32
 	ReceivedTime time.Time
 
 	//Txouts
@@ -99,6 +101,7 @@ type ModelTxin struct {
 	//Transaction input info
 	InTxHash     string
 	InScript     []byte
+	Sequence     uint32
 	PrevOutHash  string
 	PrevOutIndex int64
 
@@ -264,6 +267,8 @@ func NewTxFromString(result string, tx *ModelTx) {
 	msgTx := tx1.MsgTx()
 	hash, _ := msgTx.TxSha()
 	tx.Hash = hash.String()
+	tx.Ver = msgTx.Version
+	tx.LockTime = msgTx.LockTime
 	tx.Extracted = false
 	tx.Txouts = NewTxoutsFromMsg(msgTx, tx)
 	tx.Txins = NewTxinsFromMsg(msgTx, tx)
@@ -369,6 +374,7 @@ func NewTxinsFromMsg(msgTx *btcwire.MsgTx, mtx *ModelTx) []*ModelTxin {
 		}
 		s.InTxHash = hash.String()
 		s.InScript = in.SignatureScript
+		s.Sequence = in.Sequence
 		s.PrevOutHash = in.PreviousOutPoint.Hash.String()
 		s.PrevOutIndex = int64(in.PreviousOutPoint.Index)
 		inBuff = append(inBuff, s)

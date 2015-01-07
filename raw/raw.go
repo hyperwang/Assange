@@ -20,6 +20,8 @@ func NewTxFromRaw(raw []byte) *ModelTx {
 	modelTx.Hash = tx.Sha().String()
 	modelTx.IsCoinbase = false
 	msgTx := tx.MsgTx()
+	modelTx.Ver = msgTx.Version
+	modelTx.LockTime = msgTx.LockTime
 	modelTx.Txouts = NewTxoutsFromMsg(msgTx, modelTx)
 	modelTx.Txins = NewTxinsFromMsg(msgTx, modelTx)
 	return modelTx
