@@ -62,7 +62,7 @@ func NewBlockFromRaw(raw []byte) *ModelBlock {
 			tx.IsCoinbase = false
 		}
 		modelBlock.Txs = append(modelBlock.Txs, tx)
-		modelBlock.Transactions = append(modelBlock.Transactions, hash.Bytes()...)
+		//modelBlock.Transactions = append(modelBlock.Transactions, hash.Bytes()...)
 	}
 	return modelBlock
 }

@@ -70,3 +70,16 @@ func RpcGetblockcount() map[string]interface{} {
 func RpcGetrawtransaction(txid string) map[string]interface{} {
 	return BitcoinRPC("getrawtransaction", []interface{}{txid})
 }
+
+func RpcGetblockTxns(hash string) []string {
+	var ret []string
+	resp := RpcGetblock(hash)
+	result := resp["result"].(map[string]interface{})
+	txns, ok := result["tx"].([]interface{})
+	if ok {
+		for _, txnHash := range txns {
+			ret = append(ret, txnHash.(string))
+		}
+	}
+	return ret
+}

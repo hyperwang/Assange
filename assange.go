@@ -6,62 +6,79 @@ import (
 	"Assange/config"
 	. "Assange/explorer"
 	. "Assange/logging"
-	. "Assange/util"
+	//. "Assange/util"
 	. "Assange/zmq"
-	"encoding/hex"
+	//"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"sync"
 	"time"
 	//"github.com/conformal/btcutil"
 	//"github.com/conformal/btcwire"
+	"github.com/conformal/btcnet"
+	"github.com/conformal/btcscript"
 	"github.com/coopernurse/gorp"
 	. "strconv"
 	//"time"
 )
 
+var _ = time.Now
 var _ = ParseInt
 var _ = fmt.Printf
 var _ = json.Unmarshal
 var Config config.Configuration
-var log = GetLogger("Main", WARNING)
+var log = GetLogger("Main", DEBUG)
 
-var reindexFlag bool
+var buildblockFlag bool
+var checkblockFlag bool
 
 func init() {
 	const (
-		defaultReindex = false
-		usage          = "Regenerate database by bitcoind RPC."
+		buildblockDefault = false
+		buildblockUsage   = "Regenerate database by bitcoind RPC."
+
+		checkblockDefault = false
+		checkblockUsage   = "Check the relationship between block and tx."
 	)
-	flag.BoolVar(&reindexFlag, "reindex", defaultReindex, usage)
+	flag.BoolVar(&buildblockFlag, "buildblock", buildblockDefault, buildblockUsage)
+	flag.BoolVar(&checkblockFlag, "checkblock", checkblockDefault, checkblockUsage)
 }
 
 func main() {
 	flag.Parse()
+	var wait sync.WaitGroup
+	wait.Add(1)
 	Config, _ = config.InitConfiguration("config.json")
 	InitRpcClient(Config)
 	dbmap, _ := InitDb(Config)
-	err := InitTables(dbmap)
-	if err != nil {
-		log.Error(err.Error())
-	}
+	InitTables(dbmap)
 	InitZmq(dbmap)
 	go InitExplorerServer(Config)
-	if reindexFlag {
-		//buildBlockAndTxFromRpc(dbmap)
-		buildBlock(dbmap)
-		buildTx(dbmap)
+	if buildblockFlag {
+		buildBlock(dbmap, 50000)
+		buildTxFromBlock(dbmap)
+		extractTx(dbmap)
+		extractTxout(dbmap)
+		extractTxin(dbmap)
 	}
+	if checkblockFlag {
+		checkBlock(dbmap)
+	}
+	wait.Wait()
 	//HandleZmq()
 }
 
-func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
+func buildBlock(dbmap *gorp.DbMap, height int64) {
 	var bcHeight int64
 	var dbHeight int64
 	var rpcResult map[string]interface{}
 	var hashFromIdx string
-	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	//bcHeight = 50000
+	if height == 0 {
+		bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
+	} else {
+		bcHeight = height
+	}
 	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
 	for dbHeight < bcHeight {
 		dbHeight++
@@ -74,141 +91,202 @@ func buildBlockAndTxFromRpc(dbmap *gorp.DbMap) {
 		result := rpcResult["result"].(map[string]interface{})
 
 		//Make new ModelBlock from rpc result
-		block, _ := NewBlockFromMap(result)
+		block := new(ModelBlock)
+		block.NewFromMap(result)
 		//Insert into DB, and tx's id will be updated
-		InsertBlockIntoDb(trans, block)
+		//InsertBlockOnlyIntoDb(trans, block)
+		block.InsertIntoDb(trans)
 
-		//Make new Tx from rpc result, including spenditems for each Tx.
-		for _, tx := range block.Txs {
-			rpcResult = RpcGetrawtransaction(tx.Hash)
-			result, ok := rpcResult["result"].(string)
-			if ok {
-				NewTxFromString(result, tx)
-			} else {
-				log.Error("Type assert error. tx.Hash:%s.", tx.Hash)
-			}
-		}
-
-		//Insert spenditem into db.
-		if block.Height != 0 {
-			for _, tx := range block.Txs {
-				for _, txout := range tx.Txouts {
-					InsertTxoutIntoDb(trans, txout)
-				}
-				for _, txin := range tx.Txins {
-					InsertTxinIntoDb(trans, txin)
-				}
-			}
-		}
 		trans.Commit()
 	}
 }
 
-func buildBlock(dbmap *gorp.DbMap) {
-	var bcHeight int64
-	var dbHeight int64
-	var rpcResult map[string]interface{}
-	var hashFromIdx string
-	bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-	//bcHeight = 50000
-	dbHeight, _ = GetMaxBlockHeightFromDB(dbmap)
-	for dbHeight < bcHeight {
-		dbHeight++
-		trans, _ := dbmap.Begin()
-
-		//Get block info by height
-		rpcResult = RpcGetblockhash(dbHeight)
-		hashFromIdx = rpcResult["result"].(string)
-		rpcResult = RpcGetblock(hashFromIdx)
-		result := rpcResult["result"].(map[string]interface{})
-
-		//Make new ModelBlock from rpc result
-		block, _ := NewBlockFromMap(result)
-		//Insert into DB, and tx's id will be updated
-		InsertBlockOnlyIntoDb(trans, block)
-
-		trans.Commit()
-		if dbHeight == bcHeight {
-			bcHeight, _ = ParseInt(string(RpcGetblockcount()["result"].(json.Number)), 10, 64)
-		}
-	}
-}
-
-func buildTx(dbmap *gorp.DbMap) {
+func buildTxFromBlock(dbmap *gorp.DbMap) {
 	for {
-		var block_start_time time.Time
-		var start_time time.Time
-
-		block_start_time = time.Now()
-
-		start_time = time.Now()
 		trans, _ := dbmap.Begin()
-		log.Warning("Checkpoint dbmap.Begin duration:%f.", time.Since(start_time).Seconds())
 
 		//Get an unextracted block.
-		start_time = time.Now()
-		block, err := GetOneUnextractedBlock(trans)
+		block := new(ModelBlock)
+		err := block.NewFromUnextracted(trans)
 		if err != nil {
 			break
 		}
-		log.Warning("Checkpoint GetOneUnextractedBlock duration:%f.", time.Since(start_time).Seconds())
 
-		//Make new Tx from rpc result, including spenditems for each Tx.
-		for i := 0; i < len(block.Transactions); i += 32 {
-			start_time = time.Now()
-			bHash := block.Transactions[i : i+32]
-			hash := hex.EncodeToString(ReverseBytes(bHash))
-			rpcResult := RpcGetrawtransaction(hash)
-			log.Warning("Checkpoint  RpcGetrawtransaction duration:%f.", time.Since(start_time).Seconds())
-
-			start_time = time.Now()
-			result, ok := rpcResult["result"].(string)
-			tx := new(ModelTx)
-			if ok {
-				tx.ReceivedTime = block.Time
-				if i == 0 {
-					tx.IsCoinbase = true
-				} else {
-					tx.IsCoinbase = false
-				}
-				tx.Confirmed = true
-				NewTxFromString(result, tx)
-				tx = InsertTxIntoDB(trans, tx)
-			} else {
-				log.Error("Type assert error. tx.Hash:%s.", tx.Hash)
+		for idx, txnHash := range RpcGetblockTxns(block.Hash) {
+			resp := RpcGetrawtransaction(txnHash)
+			result, ok := resp["result"].(string)
+			if !ok {
+				log.Error("Type assert error. tx.Hash:%s.", txnHash)
+				continue
 			}
-			log.Warning("Checkpoint InsertTxIntoDB duration:%f.", time.Since(start_time).Seconds())
+			tx := new(ModelTx)
+			tx.NewFromString(result)
+			tx.ReceivedTime = block.Time
+			if idx == 0 {
+				tx.IsCoinbase = true
+			} else {
+				tx.IsCoinbase = false
+			}
+			tx.Confirmed = true
+			err := tx.InsertIntoDb(trans)
+			if err != nil {
+				log.Error(err.Error())
+			}
 
 			//Maintain the relationship between block and tx
-			start_time = time.Now()
-			InsertRelationBlockTxIntoDB(trans, block, tx)
-			log.Warning("Checkpoint03 InsertRelationBlockTxIntoDB duration:%f.", time.Since(start_time).Seconds())
+			r := new(RelationBlockTx)
+			r.InsertIntoDb(trans, block, tx)
+			block.Extracted = true
+			trans.Update(block)
+		}
+		trans.Commit()
+	}
+}
 
-			start_time = time.Now()
-			for _, txout := range tx.Txouts {
-				InsertTxoutIntoDb(trans, txout)
-			}
-			log.Warning("Checkpoint04 InsertTxoutIntoDb duration:%f.", time.Since(start_time).Seconds())
-
-			start_time = time.Now()
-			for _, txin := range tx.Txins {
-				InsertTxinIntoDb(trans, txin)
-			}
-			log.Warning("Checkpoint05 InsertTxinIntoDb duration:%f.", time.Since(start_time).Seconds())
-
-			tx.Extracted = true
-			trans.Update(tx)
+func extractTx(dbmap *gorp.DbMap) {
+	for {
+		trans, _ := dbmap.Begin()
+		tx := new(ModelTx)
+		err := tx.NewFromUnextracted(trans)
+		if err != nil {
+			break
+		}
+		resp := RpcGetrawtransaction(tx.Hash)
+		result, ok := resp["result"].(string)
+		tx1 := new(ModelTx)
+		if ok {
+			tx.UpdateInOutFromString(result)
+		} else {
+			log.Error("Type assert error. tx.Hash:%s.", tx1.Hash)
+			continue
 		}
 
-		block.Extracted = true
-		start_time = time.Now()
-		trans.Update(block)
-		log.Warning("Checkpoint06 trans.Update duration:%f.", time.Since(start_time).Seconds())
+		ins := new(ModelTxinSet)
+		ins.NewFromTx(tx)
+		if err := ins.InsertIntoDb(trans); err != nil {
+			log.Error(err.Error())
+		}
 
-		start_time = time.Now()
+		outs := new(ModelTxoutSet)
+		outs.NewFromTx(tx)
+		if err := outs.InsertIntoDb(trans); err != nil {
+			log.Error(err.Error())
+		}
+
+		//Update tx to extracted.
+		tx.Extracted = true
+		trans.Update(tx)
 		trans.Commit()
-		log.Warning("Checkpoint07 trans.Commit duration:%f.", time.Since(start_time).Seconds())
+		log.Info("Tx extraced. Id:%d Hash:%s.", tx.Id, tx.Hash)
+	}
+}
 
-		log.Warning("Block duration:%f", time.Since(block_start_time).Seconds())
+func extractTxout(dbmap *gorp.DbMap) {
+	for {
+		trans, _ := dbmap.Begin()
+		txout := new(ModelTxout)
+		err := txout.NewFromUnextracted(trans)
+		if err != nil {
+			break
+		}
+
+		class, addresses, reqSig, _ := btcscript.ExtractPkScriptAddrs(txout.OutScript, &btcnet.MainNetParams)
+		txout.Type = class
+		txout.ReqSig = reqSig
+
+		for _, address := range addresses {
+			mAddress := new(ModelAddress)
+			mAddress.UpdateFromDbByAddress(trans, address.EncodeAddress())
+			trans.Update(mAddress)
+			r := new(RelationTxoutAddress)
+			r.InsertIntoDb(trans, txout, mAddress)
+			if txout.Type >= btcscript.PubKeyTy && txout.Type <= btcscript.ScriptHashTy {
+				mAddress.Balance += txout.Value
+				trans.Update(mAddress)
+			}
+		}
+		txout.Extracted = true
+		trans.Update(txout)
+		trans.Commit()
+	}
+}
+
+func extractTxin(dbmap *gorp.DbMap) {
+	for {
+		trans, _ := dbmap.Begin()
+		txin := new(ModelTxin)
+		err := txin.NewFromUncalculated(trans)
+		if err != nil {
+			break
+		}
+		if txin.IsCoinbase {
+			log.Info("Txin is from coinbase,skip.")
+			txin.Calculated = true
+			trans.Update(txin)
+			trans.Commit()
+			continue
+		}
+		var txout = new(ModelTxout)
+		query := fmt.Sprintf("select * from txout where OutTxHash=\"%s\" and OutIndex=%d", txin.PrevOutHash, txin.PrevOutIndex)
+		err = trans.SelectOne(txout, query)
+		if err != nil {
+			log.Error(err.Error())
+		}
+		if txout.Id == 0 {
+			log.Info("No matched txout found.")
+			txin.Calculated = true
+			trans.Update(txin)
+			trans.Commit()
+			continue
+		} else {
+			log.Info("Txout matched, Id:%d, Hash:%s, Index:%d.", txout.Id, txout.OutTxHash, txout.OutIndex)
+			txin.Calculated = true
+			trans.Update(txin)
+			if txout.Type >= btcscript.PubKeyTy && txout.Type <= btcscript.ScriptHashTy {
+				address := new(ModelAddress)
+				err := trans.SelectOne(&address, "select * from address where Id in (select AddressId from txoutaddress where TxoutId=?)", txout.Id)
+				if err != nil {
+					log.Error(err.Error())
+				}
+				address.Balance -= txout.Value
+				trans.Update(address)
+			}
+			txout.Spent = true
+			txout.RefTxinId = txin.Id
+			trans.Update(txout)
+			trans.Commit()
+		}
+	}
+}
+
+func checkBlock(dbmap *gorp.DbMap) {
+	blockId, _ := GetMaxBlockIdFromDB(dbmap)
+	log.Error("Hello world,blockId:%d", blockId)
+	var i int64
+	for i = 1; i < blockId; i++ {
+		var block []*ModelBlock
+		_, err := dbmap.Select(&block, "select * from block where Id=?", i)
+		if err != nil {
+			log.Error(err.Error())
+			continue
+		}
+		if len(block) == 0 {
+			continue
+		}
+		log.Debug(block[0].Hash)
+	}
+	return
+}
+
+func checkTx(dbmap *gorp.DbMap) {
+	txId, _ := GetMaxTxIdFromDB(dbmap)
+	var i int64
+	for i = 1; i < txId; i++ {
+		txHash, err := dbmap.SelectStr("select Hash from tx where Id=?", i)
+		if err != nil {
+			log.Error(err.Error())
+			continue
+		}
+		RpcGetrawtransaction(txHash)
 	}
 }

@@ -1,8 +1,8 @@
 package zmq
 
 import (
-	. "Assange/blockdata"
-	. "Assange/raw"
+	//. "Assange/blockdata"
+	//	. "Assange/raw"
 	"fmt"
 	zmq "github.com/alecthomas/gozmq"
 	//"github.com/go-sql-driver/mysql"
@@ -40,21 +40,21 @@ func HandleZmq() {
 }
 
 func HandleTxn(raw []byte) {
-	trans, _ := dbmap.Begin()
-	tx := NewTxFromRaw(raw)
-	tx = InsertTxIntoDB(trans, tx)
-	for _, txout := range tx.Txouts {
-		InsertTxoutIntoDb(trans, txout)
-	}
-	for _, txin := range tx.Txins {
-		InsertTxinIntoDb(trans, txin)
-	}
-	trans.Commit()
+	//trans, _ := dbmap.Begin()
+	//tx := NewTxFromRaw(raw)
+	//tx = InsertTxIntoDB(trans, tx)
+	//for _, txout := range tx.Txouts {
+	//	InsertTxoutIntoDb(trans, txout)
+	//}
+	//for _, txin := range tx.Txins {
+	//	InsertTxinIntoDb(trans, txin)
+	//}
+	//trans.Commit()
 }
 
 func HandleBlk(raw []byte) {
-	trans, _ := dbmap.Begin()
-	block := NewBlockFromRaw(raw)
-	InsertBlockOnlyIntoDb(trans, block)
-	trans.Commit()
+	//trans, _ := dbmap.Begin()
+	//block := NewBlockFromRaw(raw)
+	//InsertBlockOnlyIntoDb(trans, block)
+	//trans.Commit()
 }
